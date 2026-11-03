@@ -1,9 +1,17 @@
 {
   "name": "lim",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
+    "dev": "npm run dev -w @lim/web",
+    "build": "npm run build -w @lim/web",
     "test": "npm test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

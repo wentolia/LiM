@@ -1,4 +1,4 @@
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 /** LiM の唯一のデータ型。1 Page = 1 Markdown ファイル。 */
 export interface Page {
@@ -88,4 +88,31 @@ function dedupe(items: string[]): string[] {
     out.push(item);
   }
   return out;
+}
+
+/** props と本文から Markdown ファイルの中身を作る（parsePage の逆） */
+export function serializePage(props: Record<string, unknown>, body: string): string {
+  const keys = Object.keys(props);
+  if (keys.length === 0) return body;
+  const fm = stringifyYaml(props).trimEnd();
+  return `---\n${fm}\n---\n${body}`;
+}
+
+/** 本文中の [[old]] / [[old|別名]] を [[next]] に書き換える（改名時のリンク追従） */
+export function renameLinks(text: string, oldTitle: string, nextTitle: string): string {
+  const target = normalizeTitle(oldTitle);
+  return text.replace(WIKILINK, (whole, name: string) => {
+    if (normalizeTitle(name) !== target) return whole;
+    return whole.replace(name, nextTitle);
+  });
+}
+
+/** 一覧タイル用の本文冒頭。記法を外し、空行を除く */
+export function excerpt(body: string, maxLines = 5): string {
+  return stripCode(body)
+    .split(/\r?\n/)
+    .map((l) => l.replace(WIKILINK, "$1").replace(/^#{1,6}\s+/, "").replace(/^\s*[-*]\s+/, "").trim())
+    .filter(Boolean)
+    .slice(0, maxLines)
+    .join("\n");
 }

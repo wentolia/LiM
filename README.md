@@ -26,9 +26,20 @@ Cosense の書きやすさと Google ドキュメントの整える力を、**�
 
 ## パッケージ
 
-- `packages/core` — Page の解析、リンクグラフ（バックリンク・2hop）、Query エンジン、Store I/F
+| パス | 中身 |
+| --- | --- |
+| `packages/core` | Page の解析・書き出し、リンクグラフ（2hop）、Query エンジン、Store I/F |
+| `apps/web` | Web アプリ（Vite + React + CodeMirror 6）。一覧（ギャラリー／表）とページ編集 |
+
+## 開発
+
+Node.js 22 以上。
 
 ```sh
 npm install
-npm test
+npm run dev        # http://localhost:5173
+npm test           # core と web のテスト
+npm run build      # 型チェック + 本番ビルド（apps/web/dist）
 ```
+
+現在の保存先はブラウザの localStorage（初回はサンプルページ入り）。Google ドライブ連携は `Store` I/F の実装を追加して差し替える予定。

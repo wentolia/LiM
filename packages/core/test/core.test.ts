@@ -107,3 +107,26 @@ describe("MemoryStore", () => {
     expect(next.removed).toEqual(["pages/a.md"]);
   });
 });
+
+describe("serialize / rename / excerpt", () => {
+  it("serializePage は parsePage と往復できる", async () => {
+    const { serializePage } = await import("../src/index.js");
+    const text = serializePage({ 著者: "[[梅棹忠夫]]", 評価: 4 }, "本文 [[A]]");
+    const p = parsePage("pages/x.md", text);
+    expect(p.props).toEqual({ 著者: "[[梅棹忠夫]]", 評価: 4 });
+    expect(p.body).toBe("本文 [[A]]");
+    expect(serializePage({}, "本文")).toBe("本文");
+  });
+
+  it("renameLinks は該当リンクだけを書き換える", async () => {
+    const { renameLinks } = await import("../src/index.js");
+    expect(renameLinks("[[KJ法]] と [[kj法|別名]] と [[KJ法メモ]]", "KJ法", "KJ法（川喜田）")).toBe(
+      "[[KJ法（川喜田）]] と [[KJ法（川喜田）|別名]] と [[KJ法メモ]]",
+    );
+  });
+
+  it("excerpt は記法を外す", async () => {
+    const { excerpt } = await import("../src/index.js");
+    expect(excerpt("# 見出し\n\n- [[A]] です\n```\ncode\n```\n二行目", 3)).toBe("見出し\nA です\n二行目");
+  });
+});
