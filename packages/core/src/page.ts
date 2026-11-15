@@ -18,6 +18,24 @@ export interface Page {
   invalidFrontmatter?: true;
 }
 
+/**
+ * 題名をファイル名に使える形にする：NFC にそろえ、使えない文字と制御文字を置き換え、
+ * 先頭のドットと末尾のドット・空白を外し、MAX_TITLE_LENGTH 文字までにする
+ */
+export function sanitizeTitle(title: string): string {
+  const t = title
+    .normalize("NFC")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[\\/:*?"<>|]/g, "－")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^\.+/, "");
+  return [...t].slice(0, MAX_TITLE_LENGTH).join("").replace(/[.\s]+$/, "");
+}
+
+/** 題名から新しく作るページのパス */
+export const pathOf = (title: string) => `pages/${sanitizeTitle(title)}.md`;
+
 /** 予約された項目名。書き出すときはこの順で先頭に並べ、残りは名前順にする */
 export const RESERVED_PROPS = ["id", "type", "tags", "created_at"] as const;
 /** 題名の長さの上限（ファイル名として PC に同期しても困らない長さ） */
@@ -44,22 +62,22 @@ function stripCode(text: string): string {
   return text.replace(FENCE, "").replace(INLINE_CODE, "");
 }
 
-/** 引用符なしで手書きした `author: [[山田]]` は YAML では [["山田"]]（リストのリスト）になる。これもリンクとして読む */
-function bareLink(value: unknown): string | null {
-  if (!Array.isArray(value) || value.length !== 1) return null;
-  const inner = value[0];
-  return Array.isArray(inner) && inner.length === 1 && typeof inner[0] === "string" ? inner[0] : null;
+/**
+ * 引用符なしで手書きした `author: [[山田]]` は YAML では [["山田"]]（リストのリスト）になる。
+ * 読み込み時に文字列 "[[山田]]" へそろえる（書き出すと `author: "[[山田]]"` になる）
+ */
+function normalizeBareLinks(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  if (value.length === 1 && Array.isArray(value[0]) && value[0].length === 1 && typeof value[0][0] === "string") {
+    return `[[${value[0][0]}]]`;
+  }
+  return value.map(normalizeBareLinks);
 }
 
 function collectFromValue(value: unknown, out: string[]): void {
   if (typeof value === "string") {
     for (const m of value.matchAll(WIKILINK)) out.push(m[1].trim());
   } else if (Array.isArray(value)) {
-    const bare = bareLink(value);
-    if (bare !== null && bare.trim()) {
-      out.push(bare.trim());
-      return;
-    }
     for (const v of value) collectFromValue(v, out);
   }
 }
@@ -77,9 +95,15 @@ export function parsePage(path: string, text: string): Page {
     } catch {
       invalid = true;
     }
+    // 空の frontmatter（--- と --- だけ）は従来どおり props なし。文やリストなど「項目: 値」でないものは読めないものとして扱う
+    const isMap = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed);
+    if (!invalid && parsed != null && !isMap) invalid = true;
     if (!invalid) {
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        props = parsed as Record<string, unknown>;
+      if (isMap) {
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+          // defineProperty：__proto__ のような項目名も普通の項目として持つ
+          Object.defineProperty(props, k, { value: normalizeBareLinks(v), enumerable: true, writable: true, configurable: true });
+        }
       }
       body = text.slice(fm[0].length);
     }
@@ -125,9 +149,10 @@ export function serializePage(props: Record<string, unknown>, body: string): str
   if (keys.length === 0) return body;
   // 書き出しの形を固定する：予約項目を先頭に、残りは名前順。長い文字列を折り返さない
   const reserved: readonly string[] = RESERVED_PROPS;
-  const ordered: Record<string, unknown> = {};
-  for (const k of RESERVED_PROPS) if (k in props) ordered[k] = props[k];
-  for (const k of keys.filter((k) => !reserved.includes(k)).sort()) ordered[k] = props[k];
+  // Map を使う（__proto__ などの項目名も失わない）
+  const ordered = new Map<string, unknown>();
+  for (const k of RESERVED_PROPS) if (Object.prototype.hasOwnProperty.call(props, k)) ordered.set(k, props[k]);
+  for (const k of keys.filter((k) => !reserved.includes(k)).sort()) ordered.set(k, props[k]);
   const fm = stringifyYaml(ordered, { lineWidth: 0 }).trimEnd();
   return `---\n${fm}\n---\n${body}`;
 }
@@ -141,16 +166,11 @@ export function renameLinks(text: string, oldTitle: string, nextTitle: string): 
   });
 }
 
-/** props の中の [[old]] を [[next]] に書き換える（文字列・リスト・引用符なしの [[old]] に対応） */
+/** props の中の [[old]] を [[next]] に書き換える（文字列とリスト） */
 export function renamePropLinks(props: Record<string, unknown>, oldTitle: string, nextTitle: string): Record<string, unknown> {
-  const target = normalizeTitle(oldTitle);
   const walk = (v: unknown): unknown => {
     if (typeof v === "string") return renameLinks(v, oldTitle, nextTitle);
-    if (Array.isArray(v)) {
-      const bare = bareLink(v);
-      if (bare !== null && normalizeTitle(bare) === target) return [[nextTitle]];
-      return v.map(walk);
-    }
+    if (Array.isArray(v)) return v.map(walk);
     return v;
   };
   const out: Record<string, unknown> = {};

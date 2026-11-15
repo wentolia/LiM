@@ -1,4 +1,4 @@
-import { ConflictError, DriveStore, type Store, type StoreEntry } from "@lim/core";
+import { ConflictError, DriveStore, pathOf, type Store, type StoreEntry } from "@lim/core";
 import { decodeIdToken, DRIVE_SCOPE, type Google } from "./google";
 import type { Project, Repo, Role, User } from "./repo";
 
@@ -338,6 +338,8 @@ export function createApp(deps: Deps) {
       const to = url.searchParams.get("to");
       const isPage = (x: string | null): x is string => validPath(x) && x.startsWith("pages/") && x.endsWith(".md");
       if (!isPage(path) || !isPage(to)) throw new HttpError(400, "bad path");
+      // 行き先は題名の決まり（NFC・80 文字・使えない文字なし）に沿っていること
+      if (to !== pathOf(to.slice("pages/".length, -".md".length))) throw new HttpError(400, "その名前は使えません");
       const store = await projectStore(project);
       if (!store.rename) throw new HttpError(501, "この保存先は改名に対応していません");
       try {

@@ -188,12 +188,19 @@ export class Room {
     return p;
   }
 
+  /** 中身は同じで書き出しの形（項目の順番など）だけが違うときは書かない。開いて閉じるだけで版が増えないように */
+  private sameAsBase(text: string): boolean {
+    const tmp = new Y.Doc();
+    this.codec.load(tmp, this.base);
+    return this.codec.save(tmp) === text;
+  }
+
   private async flushOnce(): Promise<void> {
     if (this.gone || !this.ready) return;
     await this.ready;
     for (let attempt = 0; attempt < 4; attempt++) {
       const text = this.codec.save(this.doc);
-      if (text === this.base) return;
+      if (text === this.base || this.sameAsBase(text)) return;
       try {
         const e = await this.deps.file.write(text, this.revision);
         this.base = text;

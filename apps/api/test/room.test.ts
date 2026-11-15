@@ -94,6 +94,14 @@ describe("共同編集の部屋", () => {
     expect(s.saved()?.revision).toBe("2");
   });
 
+  it("開いて閉じるだけなら、項目の順番が違うファイルでも書き出さない", async () => {
+    const s = setup("---\nz: 1\na: 2\n---\n本文");
+    const a = await s.client();
+    await s.room.leave(a.conn);
+    expect(s.f.writes).toBe(0);
+    expect(s.f.text).toBe("---\nz: 1\na: 2\n---\n本文");
+  });
+
   it("最後の人が抜けたらすぐ書き出す", async () => {
     const s = setup("a");
     const a = await s.client();

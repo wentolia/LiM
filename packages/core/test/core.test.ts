@@ -160,8 +160,11 @@ describe("データ構造の簡素化（0003）", () => {
   });
 
   it("props の [[旧名]] を改名に追従させる", () => {
-    const props = { author: "[[旧]]", list: ["[[旧]]", "[[他]]"], bare: [["旧"]], n: 3 };
-    expect(renamePropLinks(props, "旧", "新")).toEqual({ author: "[[新]]", list: ["[[新]]", "[[他]]"], bare: [["新"]], n: 3 });
+    const props = { author: "[[旧]]", list: ["[[旧]]", "[[他]]"], n: 3 };
+    expect(renamePropLinks(props, "旧", "新")).toEqual({ author: "[[新]]", list: ["[[新]]", "[[他]]"], n: 3 });
+    // 引用符なしの [[旧]] は読み込み時に文字列へそろうので、そのまま追従する
+    const p = parsePage("pages/x.md", "---\nauthor: [[旧]]\n---\n");
+    expect(serializePage(renamePropLinks(p.props, "旧", "新"), "")).toBe('---\nauthor: "[[新]]"\n---\n');
   });
 
   it("題名の比較は NFC にそろえる", () => {
@@ -185,5 +188,19 @@ describe("データ構造の簡素化（0003）", () => {
     await s.rename("pages/a.md", "pages/c.md");
     expect(new TextDecoder().decode(await s.read("pages/c.md"))).toBe("A");
     expect((await s.list("pages/")).map((e) => e.path).sort()).toEqual(["pages/b.md", "pages/c.md"]);
+  });
+
+  it("「項目: 値」でない frontmatter（文やリスト）は読めないものとして全文を本文にする。空の frontmatter は従来どおり", () => {
+    for (const text of ["---\nただの文\n---\n本文", "---\n- a\n- b\n---\n本文"]) {
+      const p = parsePage("pages/x.md", text);
+      expect(p.invalidFrontmatter).toBe(true);
+      expect(serializePage(p.props, p.body)).toBe(text);
+    }
+    expect(parsePage("pages/x.md", "---\n\n---\n本文").invalidFrontmatter).toBeUndefined();
+  });
+
+  it("__proto__ のような項目名も書き出しで失わない", () => {
+    const p = parsePage("pages/x.md", "---\n__proto__: 1\nb: 2\n---\n");
+    expect(serializePage(p.props, "")).toContain("__proto__: 1");
   });
 });

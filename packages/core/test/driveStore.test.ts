@@ -47,8 +47,9 @@ function fakeDrive() {
       return json(meta(f));
     }
     if (m && method === "PATCH") {
-      Object.assign(files.get(m[1])!, JSON.parse(String(init.body)));
-      return json({});
+      const f = files.get(m[1])!;
+      Object.assign(f, JSON.parse(String(init.body)));
+      return json(meta(f));
     }
     if (m && method === "GET") return new Response(files.get(m[1])!.data, { status: 200 });
     return new Response("unexpected", { status: 500 });
@@ -134,5 +135,37 @@ describe("DriveStore", () => {
     const pages = [...d.files.values()].find((f) => f.name === "pages")!;
     expect(pages.parents).toEqual([projectId]);
     expect(await top.findFolder("企画")).toBe(projectId);
+  });
+});
+
+describe("DriveStore.rename", () => {
+  const setup = async () => {
+    const d = fakeDrive();
+    const s = new DriveStore(async () => "tok", "SABAKAN", d.fetcher);
+    await s.write("pages/a.md", enc.encode("A"));
+    await s.write("pages/b.md", enc.encode("B"));
+    return { d, s };
+  };
+
+  it("名前だけ変え、ファイル ID と中身を保つ", async () => {
+    const { d, s } = await setup();
+    const before = [...d.files.values()].find((f) => f.name === "a.md")!.id;
+    const e = await s.rename("pages/a.md", "pages/c.md");
+    expect(e.path).toBe("pages/c.md");
+    expect([...d.files.values()].find((f) => f.name === "c.md")!.id).toBe(before);
+    expect(dec.decode(await s.read("pages/c.md"))).toBe("A");
+    expect(await s.stat("pages/a.md")).toBeNull();
+  });
+
+  it("行き先に別のファイルがあれば ConflictError", async () => {
+    const { s } = await setup();
+    await expect(s.rename("pages/a.md", "pages/b.md")).rejects.toThrow();
+  });
+
+  it("大文字小文字だけの改名ができ、旧名ではもう見つからない", async () => {
+    const { s } = await setup();
+    await s.rename("pages/a.md", "pages/A.md");
+    expect(await s.stat("pages/a.md")).toBeNull();
+    expect(dec.decode(await s.read("pages/A.md"))).toBe("A");
   });
 });
