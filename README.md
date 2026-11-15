@@ -48,8 +48,8 @@ npm run build      # 型チェック + 本番ビルド（apps/web/dist）
 
 | モード | 保存先 | 条件 |
 |---|---|---|
-| Google ドライブ | マイドライブ/SABAKAN/pages/*.md | `VITE_GOOGLE_CLIENT_ID` を設定してビルド |
-| このブラウザ | localStorage | 未設定時、またはログイン画面で選んだとき |
+| Google ドライブ | マイドライブ/SABAKAN/pages/*.md | 既定（`config.ts` のクライアント ID）|
+| このブラウザ | localStorage | ログイン画面で選んだとき |
 
 - スコープは `drive.file`（SABAKAN が作ったファイルだけ読み書き）。サーバー不要、クライアントシークレット不要
 - 初回ログインでドライブが空なら、ブラウザ内のページをコピーする
@@ -61,4 +61,4 @@ npm run build      # 型チェック + 本番ビルド（apps/web/dist）
 2. OAuth 同意画面：外部 / アプリ名 SABAKAN / スコープ `.../auth/drive.file` / テストユーザーに自分を追加
 3. 認証情報 → OAuth クライアント ID（ウェブアプリケーション）
    - 承認済みの JavaScript 生成元：`https://sabakan.hakuwentolia.workers.dev`、`http://localhost:5173`（プレビュー URL も使うなら追加）
-4. クライアント ID を Cloudflare の **ビルド変数** `VITE_GOOGLE_CLIENT_ID` に設定（ローカルは `apps/web/.env.local`）
+4. クライアント ID は `apps/web/src/config.ts` に記載済み（公開値）。差し替えたいときはビルド変数 `VITE_GOOGLE_CLIENT_ID` で上書きできる
