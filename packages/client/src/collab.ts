@@ -7,6 +7,14 @@ import { WebsocketProvider } from "y-websocket";
  * エディタ以外の機能（表・ボードなど）も、この部屋に Y.Doc の別の型を置いて使う想定。
  */
 
+/** 画像の表示 URL への変換とアップロード（プロジェクトのときだけ） */
+export interface Assets {
+  resolve: (src: string) => string;
+  upload?: (file: File) => Promise<string>;
+}
+
+export const AssetsContext = createContext<Assets>({ resolve: (s) => s });
+
 export interface CollabConfig {
   projectId: string;
   user: { name: string; email: string };
@@ -36,8 +44,10 @@ export interface Room {
 export function joinRoom(cfg: CollabConfig, path: string): Room {
   const doc = new Y.Doc();
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const provider = new WebsocketProvider(`${proto}//${location.host}/api/projects/${cfg.projectId}/room`, encodeURIComponent(path), doc, {
+  // パスはクエリで渡す（URL のパス部分に %2F を入れると、途中で / に戻されることがある）
+  const provider = new WebsocketProvider(`${proto}//${location.host}/api/projects/${cfg.projectId}`, "room", doc, {
     disableBc: true,
+    params: { path },
   });
   const color = colorOf(cfg.user.email);
   provider.awareness.setLocalStateField("user", { name: cfg.user.name || cfg.user.email, color, colorLight: `${color}33` });

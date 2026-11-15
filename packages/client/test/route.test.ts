@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRoute, routeHash } from "../src/useWorkspace";
+import { parseRoute, routeHash } from "../src/hooks";
 
 describe("ルート", () => {
   it("往復できる", () => {

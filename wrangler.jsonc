@@ -6,6 +6,8 @@
   "name": "sabakan",
   "main": "apps/api/src/index.ts",
   "compatibility_date": "2026-06-01",
+  // Durable Objects を使う Worker ではプレビュー URL が使えないため切る（main 以外のブランチのビルド用）
+  "preview_urls": false,
   "assets": {
     "directory": "./apps/web/dist",
     "binding": "ASSETS",

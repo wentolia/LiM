@@ -1,13 +1,8 @@
-import type { SaveState } from "./Header";
 import { useContext, useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
-import { AssetsContext } from "../assets";
-import { CollabContext, joinRoom } from "../collab";
 import { pageBody } from "@lim/core";
-import { createEditor, replaceText, type LinkHandlers } from "../editor";
-import type { Workspace } from "../workspace";
-import { formatDate } from "./ListView";
-import { Tile } from "./Tile";
+import { AssetsContext, CollabContext, joinRoom, type Workspace } from "@lim/client";
+import { createEditor, formatDate, replaceText, Tile, type LinkHandlers, type SaveState } from "@lim/ui";
 
 interface Props {
   ws: Workspace;
@@ -27,6 +22,8 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
   const timer = useRef<number | undefined>(undefined);
   const pending = useRef<string | null>(null);
   const inFlight = useRef(false);
+  /** 自分で保存するエディタを使っているか（共同編集ではない） */
+  const plainMode = useRef(false);
   const assets = useContext(AssetsContext);
   const collab = useContext(CollabContext);
   const [loading, setLoading] = useState(false);
@@ -66,7 +63,8 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
   // 他の人の変更が取り込まれたら、編集中でなければエディタに反映する（共同編集では部屋が反映する）
   useEffect(
     () =>
-      collab ? undefined : ws.subscribe(() => {
+      ws.subscribe(() => {
+        if (!plainMode.current) return;
         const p = ws.get(title);
         if (!p || !view.current || pending.current !== null || inFlight.current) return;
         replaceText(view.current, p.body);
@@ -90,15 +88,22 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
         },
     };
 
-    // ---- このブラウザだけ：自分で保存する ----
-    if (!collab) {
-      const v = createEditor(host.current, page.body, (text) => {
+    // 自分で保存するエディタ（このブラウザだけのとき、共同編集につながらないとき）
+    const parent = host.current;
+    const plain = (body: string) => {
+      const pv = createEditor(parent, body, (text) => {
         pending.current = text;
         setSaving("saving");
         window.clearTimeout(timer.current);
         timer.current = window.setTimeout(flush, SAVE_DELAY);
       }, handlers);
-      view.current = v;
+      view.current = pv;
+      plainMode.current = true;
+      return pv;
+    };
+
+    if (!collab) {
+      const v = plain(page.body);
       if (!page.body) v.focus();
       return () => {
         void flush();
@@ -108,21 +113,33 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
     }
 
     // ---- プロジェクト：共同編集の部屋につなぐ。保存は部屋がドライブへ行う ----
-    const parent = host.current;
+    plainMode.current = false;
     const room = joinRoom(collab, page.path);
     let v: EditorView | null = null;
+    let fallback: EditorView | null = null;
     let disposed = false;
     let graphTimer: number | undefined;
     setLoading(true);
     room.onStatus((st) => {
+      if (fallback) return;
       if (st === "connected") setSaving("saved");
       else if (st === "gone") {
         setError("このページは改名または削除されました。一覧から開き直してください。");
         void latest.current.ws.refresh();
       } else setSaving("offline");
     });
+    // つながらないときは、待たせずに通常の保存で編集できるようにする
+    const giveUp = window.setTimeout(() => {
+      if (disposed || v) return;
+      room.destroy();
+      setLoading(false);
+      setSaving("saved");
+      setError("同時編集の接続ができないため、通常の保存で編集しています（他の人の変更は数秒おきに反映されます）。");
+      fallback = plain(latest.current.ws.get(latest.current.title)?.body ?? "");
+    }, 6000);
     void room.synced.then(() => {
-      if (disposed) return;
+      if (disposed || fallback) return;
+      window.clearTimeout(giveUp);
       setLoading(false);
       v = createEditor(
         parent,
@@ -140,7 +157,12 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
     });
     return () => {
       disposed = true;
+      window.clearTimeout(giveUp);
       window.clearTimeout(graphTimer);
+      if (fallback) {
+        void flush();
+        fallback.destroy();
+      }
       if (v) latest.current.ws.applyLocal(latest.current.title, v.state.doc.toString());
       v?.destroy();
       view.current = null;

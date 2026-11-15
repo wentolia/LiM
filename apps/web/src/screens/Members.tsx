@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type MemberInfo, type ProjectInfo } from "../api";
+import { api, type MemberInfo, type ProjectInfo } from "@lim/client";
 
 interface Props {
   project: ProjectInfo;

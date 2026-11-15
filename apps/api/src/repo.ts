@@ -47,8 +47,10 @@ export interface D1Database {
   batch(stmts: D1Stmt[]): Promise<unknown>;
 }
 
+let schemaReady: Promise<unknown> | null = null;
+
 export class D1Repo implements Repo {
-  private ready: Promise<unknown> | null = null;
+
   constructor(private db: D1Database) {}
 
   private q(sql: string, ...v: unknown[]): D1Stmt {
@@ -56,8 +58,12 @@ export class D1Repo implements Repo {
   }
   /** 初回だけテーブルを作る */
   private init(): Promise<unknown> {
-    this.ready ??= this.db.batch(SCHEMA.map((s) => this.db.prepare(s)));
-    return this.ready;
+    // テーブル作成は同じ実行環境（isolate）で 1 回だけ
+    schemaReady ??= this.db.batch(SCHEMA.map((s) => this.db.prepare(s))).catch((e) => {
+      schemaReady = null;
+      throw e;
+    });
+    return schemaReady;
   }
   private async first<T>(sql: string, ...v: unknown[]) { await this.init(); return this.q(sql, ...v).first<T>(); }
   private async all<T>(sql: string, ...v: unknown[]) { await this.init(); return (await this.q(sql, ...v).all<T>()).results; }

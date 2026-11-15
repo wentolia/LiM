@@ -56,6 +56,20 @@ export class ApiStore implements Store {
     return call("GET", `/api/projects/${this.projectId}/files?prefix=${encodeURIComponent(prefix)}`);
   }
 
+  /** 初回読み込み：ページの一覧と本文をまとめて受け取る（40 件ずつ） */
+  async loadPages(): Promise<(StoreEntry & { text: string })[]> {
+    const out: (StoreEntry & { text: string })[] = [];
+    for (let offset: number | null = 0; offset !== null; ) {
+      const r: { pages: (StoreEntry & { text: string })[]; next: number | null } = await call(
+        "GET",
+        `/api/projects/${this.projectId}/pages?offset=${offset}`,
+      );
+      out.push(...r.pages);
+      offset = r.next;
+    }
+    return out;
+  }
+
   async read(path: string): Promise<Uint8Array> {
     const res = await fetch(this.url(path), { credentials: "same-origin" });
     if (!res.ok) throw new ApiError(res.status, `読み込めませんでした（${res.status}）`);

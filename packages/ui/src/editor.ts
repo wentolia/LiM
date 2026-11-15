@@ -142,12 +142,12 @@ const theme = EditorView.theme({
   ".cm-line": { padding: "0 4px" },
   // 先頭行の上に出る相手の名前札が切れないように
   ".cm-scroller": { overflow: "visible" },
-  ".cm-activeLine": { backgroundColor: "#EDEFEE" },
-  ".cm-cursor": { borderLeftColor: "#111111", borderLeftWidth: "2px" },
-  ".cm-lim-link": { color: "#0B4F8A", textDecoration: "underline", cursor: "pointer" },
-  ".cm-lim-missing": { color: "#9A3412", textDecorationStyle: "dashed" },
-  ".cm-lim-tag": { color: "#0B4F8A", cursor: "pointer" },
-  ".cm-lim-image": { display: "block", maxWidth: "100%", maxHeight: "480px", border: "1px solid #BFBFBF", margin: "4px 0" },
+  ".cm-activeLine": { backgroundColor: "var(--ground)" },
+  ".cm-cursor": { borderLeftColor: "var(--ink)", borderLeftWidth: "2px" },
+  ".cm-lim-link": { color: "var(--link)", textDecoration: "underline", cursor: "pointer" },
+  ".cm-lim-missing": { color: "var(--missing)", textDecorationStyle: "dashed" },
+  ".cm-lim-tag": { color: "var(--link)", cursor: "pointer" },
+  ".cm-lim-image": { display: "block", maxWidth: "100%", maxHeight: "480px", border: "1px solid var(--rule)", margin: "4px 0" },
   ".cm-ySelectionInfo": { fontFamily: "'BIZ UDGothic', sans-serif", fontSize: "11px", lineHeight: "1.4", padding: "0 4px", opacity: "1", top: "-1.5em", left: "-1px", whiteSpace: "nowrap", color: "#fff" },
   ".cm-lim-raw": { fontFamily: "'IBM Plex Mono', 'BIZ UDGothic', monospace", fontSize: "13px" },
 });
