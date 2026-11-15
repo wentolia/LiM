@@ -2,6 +2,7 @@ import { DriveStore, type StoreEntry } from "@lim/core";
 import { ownerAccessToken } from "./app";
 import { GoogleOAuth } from "./google";
 import { D1Repo } from "./repo";
+import { tokenCipher } from "./tokenCipher";
 import { Room, type Conn } from "./room";
 import type { Env } from "./index";
 import { roomTarget } from "./roomTarget";
@@ -24,7 +25,6 @@ export class PageRoom {
   constructor(private state: DOState, private env: Env) {}
 
   private makeRoom(projectId: string, path: string, origin: string): Room {
-    const repo = new D1Repo(this.env.DB);
     const google = new GoogleOAuth({
       clientId: this.env.GOOGLE_CLIENT_ID,
       clientSecret: this.env.GOOGLE_CLIENT_SECRET,
@@ -33,6 +33,7 @@ export class PageRoom {
     let store: DriveStore | null = null;
     const drive = async () => {
       if (store) return store;
+      const repo = new D1Repo(this.env.DB, await tokenCipher(this.env.DRIVE_TOKEN_KEY));
       const project = await repo.getProject(projectId);
       if (!project) throw new Error("project not found");
       let cache = roomFolderCache.get(project.folder_id);

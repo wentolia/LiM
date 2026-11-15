@@ -33,7 +33,7 @@
 | 項目 | 決め |
 | --- | --- |
 | 方式 | AES-GCM（256 ビット）。Workers の WebCrypto（`crypto.subtle`）だけを使い、ライブラリは足さない |
-| 鍵 | Worker のシークレット `DRIVE_TOKEN_KEY`（32 バイトの乱数を base64 にしたもの）。前後の空白を除いて復号し、ちょうど 32 バイトでなければ「鍵が無い」と同じ扱い。`extractable: false` で取り込み、isolate ごとに 1 回だけ `importKey` する |
+| 鍵 | Worker のシークレット `DRIVE_TOKEN_KEY`（32 バイトの乱数を base64 にしたもの）。前後の空白を除いて復号し、ちょうど 32 バイトでなければ使わない（下の表）。`extractable: false` で取り込み、isolate ごとに 1 回だけ `importKey` する |
 | IV | 暗号化のたびに `crypto.getRandomValues` で 12 バイトを新しく作る。列ごとに別、使い回さない |
 | 保存の形 | `v1.<IV の base64url>.<暗号文と認証タグの base64url>`。列の型は TEXT のままで、表の変更はない |
 | 付加データ（AAD） | `drive_tokens:<user_id>:<列名>`。別の人の行や別の列へ暗号文を移し替えても復号できない |
@@ -47,6 +47,7 @@
 | `refresh_token` を復号できない（鍵の取り違え・改ざん） | `getDriveToken` は `null`（未接続と同じ）を返す。行は消さず、ログには `user_id` と列名だけ出す（値は出さない）。`/api/me` は `driveConnected: false` になり、管理者は今の「ドライブを接続」から接続し直せる。他の人と部屋は今の 409「管理者のドライブが接続されていません」 |
 | `access_token` だけ復号できない | `null` とみなし、`refresh_token` で更新する |
 | `DRIVE_TOKEN_KEY` が無い（移行期間：PR 2〜PR 3 の間） | 今までどおり平文で読み書きし、警告をログに出す。順番を間違えても家族が止まらないようにするため |
+| `DRIVE_TOKEN_KEY` を登録したのに 32 バイトの base64 でない（貼り間違い） | 503「サーバーの設定（DRIVE_TOKEN_KEY）が正しくありません」。黙って平文に戻ると、接続し直したときに平文で保存されてしまうため（PR 2 のレビューで追加） |
 | `DRIVE_TOKEN_KEY` が無い（PR 3 のあと） | `GOOGLE_CLIENT_SECRET` と同じく 503「サーバーの設定（DRIVE_TOKEN_KEY）がまだです」 |
 
 ### 既存の平文の行の移し方（管理者の接続を切らない）
