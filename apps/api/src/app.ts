@@ -11,6 +11,8 @@ export interface Deps {
   clientId: string;
   /** 管理者のアクセストークンでドライブを開く（テストではメモリ Store に差し替える） */
   openDrive: (token: string, root: string | { id: string }) => DriveLike;
+  /** 共同編集の部屋へつなぐ（WebSocket）。無ければ共同編集なし */
+  openRoom?: (projectId: string, path: string, req: Request) => Promise<Response>;
   now?: () => number;
   randomId?: () => string;
 }
@@ -29,8 +31,20 @@ const SESSION_DAYS = 30;
 const SID = "sid";
 const STATE = "oauth_state";
 
-class HttpError extends Error {
+export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message); }
+}
+
+/** 管理者の有効なアクセストークン（期限切れなら refresh_token で更新して保存） */
+export async function ownerAccessToken(repo: Repo, google: Google, ownerId: string, now: number): Promise<string> {
+  const t = await repo.getDriveToken(ownerId);
+  if (!t) throw new HttpError(409, "管理者のドライブが接続されていません");
+  if (t.access_token && t.expires_at && t.expires_at > now + 60_000) return t.access_token;
+  const r = await google.refresh(t.refresh_token).catch(() => {
+    throw new HttpError(409, "管理者のドライブ接続が切れています。管理者がもう一度ドライブを接続してください");
+  });
+  await repo.putDriveToken({ ...t, access_token: r.access_token, expires_at: now + r.expires_in * 1000 });
+  return r.access_token;
 }
 
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -83,17 +97,7 @@ export function createApp(deps: Deps) {
     return u;
   }
 
-  /** 管理者の有効なアクセストークン（期限切れなら更新して保存） */
-  async function ownerToken(ownerId: string): Promise<string> {
-    const t = await repo.getDriveToken(ownerId);
-    if (!t) throw new HttpError(409, "管理者のドライブが接続されていません");
-    if (t.access_token && t.expires_at && t.expires_at > now() + 60_000) return t.access_token;
-    const r = await google.refresh(t.refresh_token).catch(() => {
-      throw new HttpError(409, "管理者のドライブ接続が切れています。管理者がもう一度ドライブを接続してください");
-    });
-    await repo.putDriveToken({ ...t, access_token: r.access_token, expires_at: now() + r.expires_in * 1000 });
-    return r.access_token;
-  }
+  const ownerToken = (ownerId: string) => ownerAccessToken(repo, google, ownerId, now());
 
   async function access(req: Request, projectId: string, need: Role = "member"): Promise<{ user: User; project: Project; role: Role }> {
     const user = await requireUser(req);
@@ -222,6 +226,19 @@ export function createApp(deps: Deps) {
       if (owner?.email === email) throw new HttpError(400, "管理者は外せません");
       await repo.removeMember(m[1], email);
       return json(await repo.members(m[1]));
+    }],
+
+    // ---- 共同編集（WebSocket） ----
+    ["GET", /^\/api\/projects\/(\w+)\/room\/([^/]+)$/, async (req, m, url) => {
+      // 他サイトからの WebSocket 接続を防ぐ
+      const origin = req.headers.get("Origin");
+      if (origin !== url.origin) throw new HttpError(403, "forbidden");
+      if (req.headers.get("Upgrade") !== "websocket") throw new HttpError(426, "WebSocket で接続してください");
+      await access(req, m[1]);
+      const path = decodeURIComponent(m[2]);
+      if (!validPath(path) || !path.endsWith(".md")) throw new HttpError(400, "bad path");
+      if (!deps.openRoom) throw new HttpError(501, "共同編集は使えません");
+      return deps.openRoom(m[1], path, req);
     }],
 
     // ---- ファイル（ページ・画像） ----

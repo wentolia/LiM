@@ -2,8 +2,16 @@ import { createApp, defaultOpenDrive } from "./app";
 import { GoogleOAuth } from "./google";
 import { D1Repo, type D1Database } from "./repo";
 
+export { PageRoom } from "./roomObject";
+
+interface DONamespace {
+  idFromName(name: string): unknown;
+  get(id: unknown): { fetch(req: Request): Promise<Response> };
+}
+
 export interface Env {
   DB: D1Database;
+  ROOMS: DONamespace;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   ASSETS: { fetch(req: Request): Promise<Response> };
@@ -25,6 +33,14 @@ export default {
       }),
       clientId: env.GOOGLE_CLIENT_ID,
       openDrive: defaultOpenDrive,
+      // 共同編集の部屋：メンバー確認のあと、ページごとの Durable Object へつなぐ
+      openRoom: (projectId, path, request) => {
+        const stub = env.ROOMS.get(env.ROOMS.idFromName(`${projectId}:${path}`));
+        const headers = new Headers(request.headers);
+        headers.set("X-Project-Id", projectId);
+        headers.set("X-Path", path);
+        return stub.fetch(new Request(request.url, { headers }));
+      },
     });
     return app(req);
   },

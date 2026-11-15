@@ -1,4 +1,4 @@
-export type SaveState = "saved" | "saving" | "error";
+export type SaveState = "saved" | "saving" | "error" | "offline";
 
 interface Props {
   /** 保存先の表示名 */
@@ -14,7 +14,12 @@ interface Props {
   onHome: () => void;
 }
 
-const SAVE_LABEL: Record<SaveState, string> = { saved: "保存済み", saving: "保存中…", error: "保存できませんでした" };
+const SAVE_LABEL: Record<SaveState, string> = {
+  saved: "保存済み",
+  saving: "保存中…",
+  error: "保存できませんでした",
+  offline: "接続待ち（入力は再接続後に反映）",
+};
 
 /** 接続情報だけを示すヘッダー */
 export function Header({ place, project, save, pageCount, user, onLogin, onLogout, onHome }: Props) {
@@ -38,7 +43,7 @@ export function Header({ place, project, save, pageCount, user, onLogin, onLogou
           <span className={`lamp ${save ?? "saved"}`} aria-hidden="true" />
           保存先 {place}
         </span>
-        {save && <span className={save === "error" ? "cell alert" : "cell"}>{SAVE_LABEL[save]}</span>}
+        {save && <span className={save === "error" || save === "offline" ? "cell alert" : "cell"}>{SAVE_LABEL[save]}</span>}
         {pageCount !== undefined && <span className="cell">{pageCount} ページ</span>}
         <span className="cell user">{user ?? "未ログイン"}</span>
         {onLogout && (

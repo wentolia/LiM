@@ -2,7 +2,8 @@ import type { SaveState } from "./Header";
 import { useContext, useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { AssetsContext } from "../assets";
-import { createEditor, replaceText } from "../editor";
+import { CollabContext, joinRoom } from "../collab";
+import { createEditor, replaceText, type LinkHandlers } from "../editor";
 import type { Workspace } from "../workspace";
 import { formatDate } from "./ListView";
 import { Tile } from "./Tile";
@@ -26,6 +27,8 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
   const pending = useRef<string | null>(null);
   const inFlight = useRef(false);
   const assets = useContext(AssetsContext);
+  const collab = useContext(CollabContext);
+  const [loading, setLoading] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,10 +62,10 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
     setError(null);
   }, [title]);
 
-  // 他の人の変更が取り込まれたら、編集中でなければエディタに反映する
+  // 他の人の変更が取り込まれたら、編集中でなければエディタに反映する（共同編集では部屋が反映する）
   useEffect(
     () =>
-      ws.subscribe(() => {
+      collab ? undefined : ws.subscribe(() => {
         const p = ws.get(title);
         if (!p || !view.current || pending.current !== null || inFlight.current) return;
         replaceText(view.current, p.body);
@@ -73,16 +76,7 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
   // ページが変わったらエディタを作り直す
   useEffect(() => {
     if (!host.current || !page) return;
-    const v = createEditor(
-      host.current,
-      page.body,
-      (text) => {
-        pending.current = text;
-        setSaving("saving");
-        window.clearTimeout(timer.current);
-        timer.current = window.setTimeout(flush, SAVE_DELAY);
-      },
-      {
+    const handlers: LinkHandlers = {
         exists: (t) => latest.current.ws.exists(t),
         resolve: assets.resolve,
         upload: assets.upload,
@@ -93,17 +87,66 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
           if (!w.exists(t)) await w.create(t);
           latest.current.onOpen(w.get(t)?.title ?? t);
         },
-      },
-    );
-    view.current = v;
-    if (!page.body) v.focus();
+    };
+
+    // ---- このブラウザだけ：自分で保存する ----
+    if (!collab) {
+      const v = createEditor(host.current, page.body, (text) => {
+        pending.current = text;
+        setSaving("saving");
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(flush, SAVE_DELAY);
+      }, handlers);
+      view.current = v;
+      if (!page.body) v.focus();
+      return () => {
+        void flush();
+        v.destroy();
+        view.current = null;
+      };
+    }
+
+    // ---- プロジェクト：共同編集の部屋につなぐ。保存は部屋がドライブへ行う ----
+    const parent = host.current;
+    const room = joinRoom(collab, page.path);
+    let v: EditorView | null = null;
+    let disposed = false;
+    let graphTimer: number | undefined;
+    setLoading(true);
+    room.onStatus((st) => {
+      if (st === "connected") setSaving("saved");
+      else if (st === "gone") {
+        setError("このページは改名または削除されました。一覧から開き直してください。");
+        void latest.current.ws.refresh();
+      } else setSaving("offline");
+    });
+    void room.synced.then(() => {
+      if (disposed) return;
+      setLoading(false);
+      v = createEditor(
+        parent,
+        "",
+        (text) => {
+          // 一覧・リンク・関連ページ用に手元の索引だけ更新する（保存は部屋が行う）
+          window.clearTimeout(graphTimer);
+          graphTimer = window.setTimeout(() => latest.current.ws.applyLocal(latest.current.title, text), 300);
+        },
+        handlers,
+        { ytext: room.doc.getText("body"), awareness: room.provider.awareness },
+      );
+      view.current = v;
+      if (!room.doc.getText("body").length) v.focus();
+    });
     return () => {
-      void flush();
-      v.destroy();
+      disposed = true;
+      window.clearTimeout(graphTimer);
+      if (v) latest.current.ws.applyLocal(latest.current.title, v.state.doc.toString());
+      v?.destroy();
       view.current = null;
+      room.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page?.path]);
+  }, [page?.path, collab]);
 
   if (!page) {
     return (
@@ -120,6 +163,7 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
     if (draftTitle.trim() === page.title) return;
     try {
       await flush();
+      if (collab && view.current) ws.applyLocal(page.title, view.current.state.doc.toString());
       const next = await ws.rename(page.title, draftTitle);
       setError(null);
       onRenamed(next);
@@ -153,6 +197,7 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
           }}
         />
         {error && <div className="error">{error}</div>}
+        {loading && <div className="note">読み込み中…</div>}
         <div ref={host} />
       </article>
       {related.map((g) => (

@@ -128,6 +128,14 @@ export class Workspace {
     return page.body;
   }
 
+  /** 保存はせず、手元の索引（一覧・リンク）だけ本文を更新する。共同編集では保存は部屋が行う */
+  applyLocal(title: string, body: string): void {
+    const cur = this.get(title);
+    if (!cur || cur.body === body) return;
+    this.graph.upsert(parsePage(cur.path, serializePage(cur.props, body)));
+    this.emit();
+  }
+
   /**
    * 保存先の変更（他の人の編集・追加・削除）を取り込む。変わったページのタイトルを返す。
    * 保存中のページは、保存のほうでマージするので飛ばす。

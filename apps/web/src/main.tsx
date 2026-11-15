@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { Pages } from "./App";
 import { api, ApiError, ApiStore, loginUrl, type Me, type ProjectInfo } from "./api";
 import { AssetsContext, type Assets } from "./assets";
+import { CollabContext, type CollabConfig } from "./collab";
 import { Header, type SaveState } from "./components/Header";
 import { Login } from "./components/Login";
 import { Members } from "./components/Members";
@@ -24,7 +25,7 @@ function Root() {
   const [state, setState] = useState<State>({ kind: "checking" });
   const [route, go] = useRoute();
   const [saving, setSaving] = useState<SaveState>("saved");
-  const [open, setOpen] = useState<{ id: string; ws: Workspace; store: ApiStore; assets: Assets } | null>(null);
+  const [open, setOpen] = useState<{ id: string; ws: Workspace; store: ApiStore; assets: Assets; collab: CollabConfig } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   // ヘッダーのページ数を最新に保つため、開いている箱の変更を購読する
   useWorkspace(state.kind === "local" ? state.ws : (open?.ws ?? null));
@@ -62,7 +63,13 @@ function Root() {
     openProject(route.project).then(
       ({ ws, store }) =>
         !cancelled &&
-        setOpen({ id: route.project!, ws, store, assets: { resolve: (src) => store.assetUrl(src), upload: (f) => store.upload(f, f.name) } }),
+        setOpen({
+          id: route.project!,
+          ws,
+          store,
+          assets: { resolve: (src) => store.assetUrl(src), upload: (f) => store.upload(f, f.name) },
+          collab: { projectId: route.project!, user: state.kind === "server" ? { name: state.me.name, email: state.me.email } : { name: "", email: "" } },
+        }),
       (e) => !cancelled && setLoadError(message(e)),
     );
     return () => {
@@ -193,7 +200,9 @@ function Root() {
       {header({ save: saving, pageCount: open?.id === project.id ? open.ws.list().length : undefined })}
       {open?.id === project.id ? (
         <AssetsContext.Provider value={open.assets}>
-          <Pages ws={open.ws} title={route.title} go={(t) => go({ project: project.id, title: t })} setSaving={setSaving} />
+          <CollabContext.Provider value={open.collab}>
+            <Pages ws={open.ws} title={route.title} go={(t) => go({ project: project.id, title: t })} setSaving={setSaving} />
+          </CollabContext.Provider>
         </AssetsContext.Provider>
       ) : (
         <div className="empty">{loadError ? `読み込めませんでした：${loadError}` : "読み込み中…"}</div>

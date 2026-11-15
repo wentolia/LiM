@@ -14,6 +14,9 @@
   },
   // メンバー表。database_id を書かなければ、初回デプロイ時に Cloudflare が自動で作る
   "d1_databases": [{ "binding": "DB", "database_name": "sabakan" }],
+  // 共同編集の部屋（ページごと）。無料プランで使える SQLite 版
+  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "PageRoom" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PageRoom"] }],
   // 公開してよい値。GOOGLE_CLIENT_SECRET はダッシュボードの「変数とシークレット」に登録する
   "vars": {
     "GOOGLE_CLIENT_ID": "519549570563-vu6jjho0bb6cv9eakm7e888na83s8suj.apps.googleusercontent.com"
