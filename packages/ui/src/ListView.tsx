@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Page } from "@lim/core";
+import { HIDDEN_PROPS, type Page } from "@lim/core";
 import { Tile } from "./Tile";
 
 export interface PageItem {
@@ -22,6 +22,7 @@ const formatDate = (iso: string) => {
 
 const propsText = (props: Record<string, unknown>) =>
   Object.entries(props)
+    .filter(([k]) => !HIDDEN_PROPS.includes(k))
     .map(([k, v]) => `${k} ${String(v).replace(/^\[\[(.+)\]\]$/, "$1")}`)
     .join(" / ") || "—";
 

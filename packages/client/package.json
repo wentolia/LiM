@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@lim/core": "*",
+    "fflate": "^0.8.3",
     "y-protocols": "^1.0.7",
     "y-websocket": "^3.1.0",
     "yjs": "^13.6.33"

@@ -1,4 +1,4 @@
-import { ConflictError, DriveStore, pathOf, type Store, type StoreEntry } from "@lim/core";
+import { ConflictError, DriveStore, pathOf, projectReadme, type Store, type StoreEntry } from "@lim/core";
 import { decodeIdToken, DRIVE_SCOPE, type Google } from "./google";
 import type { Project, Repo, Role, User } from "./repo";
 
@@ -125,6 +125,18 @@ export function createApp(deps: Deps) {
     return deps.openDrive(await ownerToken(project.owner_id), { id: project.folder_id });
   }
 
+  /**
+   * プロジェクトのフォルダ直下の README.md を、今の版の中身にそろえる（サーバーだけが書く。決定 0003・0004）。
+   * 同じなら書かない。ドライブの呼び出しは読むのに 2 回、書くときにもう 1〜2 回
+   */
+  async function syncReadme(store: DriveLike): Promise<boolean> {
+    const want = projectReadme();
+    const cur = await store.read("README.md").then((d) => new TextDecoder().decode(d), () => null);
+    if (cur === want) return false;
+    await store.write("README.md", new TextEncoder().encode(want), "text/markdown");
+    return true;
+  }
+
   async function createProject(user: User, name: string): Promise<Project> {
     const token = await ownerToken(user.id);
     const top = deps.openDrive(token, ROOT_FOLDER);
@@ -137,6 +149,8 @@ export function createApp(deps: Deps) {
     };
     await repo.createProject(project);
     await repo.addMember({ project_id: project.id, email: user.email, role: "owner", added_at: project.created_at });
+    // README はあとからでも書けるので、失敗してもプロジェクトは作る
+    await syncReadme(deps.openDrive(token, { id: project.folder_id })).catch((e) => console.error("README", e));
     return project;
   }
 
@@ -330,6 +344,12 @@ export function createApp(deps: Deps) {
         if (e instanceof ConflictError) return json({ error: e.message, current: e.current }, 409);
         throw e;
       }
+    }],
+    // README.md を今の版にそろえる。管理者が「データを今の形にそろえる」ボタンで呼ぶ（中身はサーバーが作るので、受け取るものは無い）。
+    // 開くたびには書かない：全員が書き合う・同時に 2 枚できる・版の違う環境が書き直し合うのを避ける
+    ["POST", /^\/api\/projects\/(\w+)\/readme$/, async (req, m) => {
+      const { project } = await access(req, m[1], "owner");
+      return json({ written: await syncReadme(await projectStore(project)) });
     }],
     ["PATCH", /^\/api\/projects\/(\w+)\/file$/, async (req, m, url) => {
       // 改名（同じフォルダの中だけ）。ドライブの版履歴とファイル ID を保つ
