@@ -12,7 +12,7 @@ export function Login({ busy, error, lastUser, onLogin, onLocal }: Props) {
   return (
     <div className="app">
       <header className="header">
-        <span className="brand">LIM</span>
+        <span className="brand">SABAKAN</span>
         <div className="info">
           <span className="cell">保存先 未接続</span>
           <span className="cell user">未ログイン</span>
@@ -21,8 +21,8 @@ export function Login({ busy, error, lastUser, onLogin, onLocal }: Props) {
       <main className="login">
         <section className="login-box">
           <h1>ログイン</h1>
-          <p>ページは Google ドライブの「マイドライブ / LiM」フォルダに、Markdown ファイルとして保存されます。</p>
-          <p className="note">LiM が作ったファイル以外は読み書きしません。</p>
+          <p>ページは Google ドライブの「マイドライブ / SABAKAN」フォルダに、Markdown ファイルとして保存されます。</p>
+          <p className="note">SABAKAN が作ったファイル以外は読み書きしません。</p>
           <button type="button" className="primary" onClick={onLogin} disabled={busy}>
             {busy ? "接続中…" : lastUser ? `${lastUser} で続ける` : "Google でログイン"}
           </button>

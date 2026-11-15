@@ -24,7 +24,7 @@ export function Header({ save, pageCount, conn, onLogin, onHome }: Props) {
   return (
     <header className="header">
       <button type="button" className="brand" onClick={onHome}>
-        LIM
+        SABAKAN
       </button>
       <div className="info">
         <span className="cell">

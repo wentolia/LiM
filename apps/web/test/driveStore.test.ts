@@ -62,22 +62,22 @@ const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 describe("DriveStore", () => {
-  it("LiM/pages フォルダを作り、書いて読める", async () => {
+  it("SABAKAN/pages フォルダを作り、書いて読める", async () => {
     const d = fakeDrive();
-    const s = new DriveStore(async () => "tok", "LiM", d.fetcher);
+    const s = new DriveStore(async () => "tok", "SABAKAN", d.fetcher);
     await s.write("pages/a.md", enc.encode("hello"));
     const folders = [...d.files.values()].filter((f) => f.mimeType.includes("folder"));
-    expect(folders.map((f) => f.name).sort()).toEqual(["LiM", "pages"]);
+    expect(folders.map((f) => f.name).sort()).toEqual(["SABAKAN", "pages"]);
     expect(dec.decode(await s.read("pages/a.md"))).toBe("hello");
   });
 
   it("同じパスへの書き込みは上書き（ファイルは増えない）", async () => {
     const d = fakeDrive();
-    const s = new DriveStore(async () => "tok", "LiM", d.fetcher);
+    const s = new DriveStore(async () => "tok", "SABAKAN", d.fetcher);
     await s.write("pages/a.md", enc.encode("1"));
     const e = await s.write("pages/a.md", enc.encode("2"));
     expect(e.revision).toBe("2");
-    const fresh = new DriveStore(async () => "tok", "LiM", d.fetcher);
+    const fresh = new DriveStore(async () => "tok", "SABAKAN", d.fetcher);
     const list = await fresh.list("pages/");
     expect(list.map((x) => x.path)).toEqual(["pages/a.md"]);
     expect(dec.decode(await fresh.read("pages/a.md"))).toBe("2");
@@ -85,7 +85,7 @@ describe("DriveStore", () => {
 
   it("削除はゴミ箱へ移す", async () => {
     const d = fakeDrive();
-    const s = new DriveStore(async () => "tok", "LiM", d.fetcher);
+    const s = new DriveStore(async () => "tok", "SABAKAN", d.fetcher);
     await s.write("pages/a.md", enc.encode("x"));
     await s.remove("pages/a.md");
     expect(await s.list("pages/")).toEqual([]);
@@ -100,7 +100,7 @@ describe("DriveStore", () => {
       if (first) { first = false; return new Response("", { status: 401 }); }
       return d.fetcher(u, i);
     }) as typeof fetch;
-    const s = new DriveStore(async () => "tok", "LiM", fetcher, () => invalidated++);
+    const s = new DriveStore(async () => "tok", "SABAKAN", fetcher, () => invalidated++);
     expect(await s.user()).toEqual({ name: "W", email: "w@example.com" });
     expect(invalidated).toBe(1);
   });

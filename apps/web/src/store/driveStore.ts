@@ -17,17 +17,17 @@ interface DriveFile {
 export type Fetch = typeof fetch;
 
 /**
- * Google ドライブ上の「マイドライブ/LiM/」をワークスペースとする Store 実装。
- * パス "pages/x.md" はフォルダ LiM/pages/ 内のファイル x.md に対応する。
- * スコープは drive.file なので、LiM が作ったファイルだけが見える。
+ * Google ドライブ上の「マイドライブ/SABAKAN/」をワークスペースとする Store 実装。
+ * パス "pages/x.md" はフォルダ SABAKAN/pages/ 内のファイル x.md に対応する。
+ * スコープは drive.file なので、SABAKAN が作ったファイルだけが見える。
  */
 export class DriveStore implements Store {
-  private folders = new Map<string, string>(); // "" → LiM, "pages" → LiM/pages
+  private folders = new Map<string, string>(); // "" → SABAKAN, "pages" → SABAKAN/pages
   private ids = new Map<string, string>(); // path → fileId
 
   constructor(
     private getToken: () => Promise<string>,
-    private rootName = "LiM",
+    private rootName = "SABAKAN",
     private fetcher: Fetch = (...a) => fetch(...a),
     private onAuthError: () => void = () => {},
   ) {}

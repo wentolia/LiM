@@ -11,4 +11,4 @@ export const GOOGLE_CLIENT_ID: string =
 export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 /** マイドライブ直下に作るフォルダ名 */
-export const ROOT_FOLDER = "LiM";
+export const ROOT_FOLDER = "SABAKAN";
