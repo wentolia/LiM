@@ -1,7 +1,7 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { pageBody } from "@lim/core";
-import { AssetsContext, CollabContext, joinRoom, type Workspace } from "@lim/client";
+import { AssetsContext, CollabContext, diagnoseRoom, joinRoom, type Workspace } from "@lim/client";
 import { createEditor, formatDate, replaceText, Tile, type LinkHandlers, type SaveState } from "@lim/ui";
 
 interface Props {
@@ -131,10 +131,18 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
     // つながらないときは、待たせずに通常の保存で編集できるようにする
     const giveUp = window.setTimeout(() => {
       if (disposed || v) return;
+      const closeInfo = room.lastClose();
       room.destroy();
       setLoading(false);
       setSaving("saved");
-      setError("同時編集の接続ができないため、通常の保存で編集しています（他の人の変更は数秒おきに反映されます）。");
+      const base = "同時編集の接続ができないため、通常の保存で編集しています（他の人の変更は数秒おきに反映されます）。";
+      setError(base);
+      // 原因を画面に出す（サーバーで部屋を開けるかを確かめる）
+      void diagnoseRoom(collab, page.path).then((why) => {
+        if (disposed) return;
+        const detail = why ?? closeInfo ?? "サーバー側は正常。ネットワークやブラウザ拡張が WebSocket を止めている可能性があります";
+        setError(`${base} 原因：${detail}`);
+      });
       fallback = plain(latest.current.ws.get(latest.current.title)?.body ?? "");
     }, 6000);
     void room.synced.then(() => {

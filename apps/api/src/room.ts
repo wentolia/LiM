@@ -106,7 +106,12 @@ export class Room {
       // 前回から外で（別のアプリや旧方式で）書き換えられていたら、その内容に合わせる
       this.doc.transact(() => this.codec.load(this.doc, raw), Origin.load);
     })();
-    return this.ready;
+    // 失敗したら次の接続でやり直す（失敗を覚えたままにしない）
+    const ready = this.ready;
+    ready.catch(() => {
+      if (this.ready === ready) this.ready = null;
+    });
+    return ready;
   }
 
   async join(conn: Conn): Promise<void> {
