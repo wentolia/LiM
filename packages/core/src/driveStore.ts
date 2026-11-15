@@ -1,4 +1,4 @@
-import type { Store, StoreEntry } from "./store.js";
+import { checkRevision, type Store, type StoreEntry, type WriteOptions } from "./store.js";
 
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
@@ -131,7 +131,15 @@ export class DriveStore implements Store {
     return new Uint8Array(await res.arrayBuffer());
   }
 
-  async write(path: string, data: Uint8Array, contentType = "text/markdown"): Promise<StoreEntry> {
+  /** 1 ファイルの現在の状態（無ければ null）。キャッシュを使わず毎回問い合わせる */
+  async stat(path: string): Promise<StoreEntry | null> {
+    const [dir, name] = this.split(path);
+    const found = await this.search(`name = '${this.esc(name)}' and '${await this.folder(dir)}' in parents and trashed = false`);
+    return found[0] ? this.entry(path, found[0]) : null;
+  }
+
+  async write(path: string, data: Uint8Array, contentType = "text/markdown", opts?: WriteOptions): Promise<StoreEntry> {
+    if (opts?.ifRevision !== undefined) checkRevision(path, (await this.stat(path))?.revision, opts);
     const id = await this.idOf(path);
     const body = new Blob([data as BlobPart], { type: contentType });
     if (id) {

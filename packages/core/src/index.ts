@@ -3,3 +3,4 @@ export * from "./graph.js";
 export * from "./query.js";
 export * from "./store.js";
 export * from "./driveStore.js";
+export * from "./merge.js";

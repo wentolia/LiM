@@ -50,3 +50,48 @@ describe("Workspace", () => {
     expect(sanitizeTitle(" a/b:c ")).toBe("a－b－c");
   });
 });
+
+describe("複数人での編集", () => {
+  it("同じページを同時に編集しても、両方の変更が残る", async () => {
+    const store = new MemoryStore();
+    const a = new Workspace(store);
+    await a.create("議事録");
+    await a.saveBody("議事録", "議題\n1. 予算\n2. 日程\nメモ");
+    const b = new Workspace(store);
+    await b.load();
+    await b.load();
+    // A と B が同じ版から別々の行を書き換える
+    await a.saveBody("議事録", "議題\n1. 予算（確定）\n2. 日程\nメモ");
+    const merged = await b.saveBody("議事録", "議題\n1. 予算\n2. 日程（来週）\nメモ");
+    expect(merged).toBe("議題\n1. 予算（確定）\n2. 日程（来週）\nメモ");
+    await a.refresh();
+    expect(a.get("議事録")?.body).toBe(merged);
+  });
+
+  it("refresh で他の人の追加・削除を取り込む", async () => {
+    const store = new MemoryStore();
+    const a = new Workspace(store);
+    await a.create("一");
+    const b = new Workspace(store);
+    await b.load();
+    await b.create("二");
+    expect(await a.refresh()).toEqual(["二"]);
+    expect(a.exists("二")).toBe(true);
+    await b.rename("一", "いち");
+    await a.refresh();
+    expect(a.exists("一")).toBe(false);
+    expect(a.exists("いち")).toBe(true);
+  });
+
+  it("新しいページ名が他の人とぶつかっても消えない", async () => {
+    const store = new MemoryStore();
+    const a = new Workspace(store);
+    const b = new Workspace(store);
+    await a.load();
+    await b.load();
+    await a.saveBody("メモ", "A の内容");
+    const merged = await b.saveBody("メモ", "B の内容");
+    expect(merged).toContain("A の内容");
+    expect(merged).toContain("B の内容");
+  });
+});

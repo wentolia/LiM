@@ -107,6 +107,28 @@ describe("API", () => {
     expect((await s.call("bob", "GET", `/api/projects/${p.id}/files`)).status).toBe(404);
   });
 
+  it("If-Match の revision が古ければ 409 と現在の revision を返す", async () => {
+    const s = setup();
+    await s.login("alice", "alice@example.com", true);
+    const p = await (await s.call("alice", "POST", "/api/projects", { name: "a" })).json();
+    const url = `/api/projects/${p.id}/file?path=pages/x.md`;
+    const first = await (await s.call("alice", "PUT", url, "1", { "If-Match": "" })).json();
+    const stale = await s.call("alice", "PUT", url, "2", { "If-Match": "" });
+    expect(stale.status).toBe(409);
+    expect((await stale.json()).current).toBe(first.revision);
+    expect((await s.call("alice", "PUT", url, "2", { "If-Match": first.revision })).status).toBe(200);
+  });
+
+  it("画像は画像の Content-Type で返し、スクリプトは無効化する", async () => {
+    const s = setup();
+    await s.login("alice", "alice@example.com", true);
+    const p = await (await s.call("alice", "POST", "/api/projects", { name: "a" })).json();
+    await s.call("alice", "PUT", `/api/projects/${p.id}/file?path=assets/a.svg`, "<svg/>");
+    const res = await s.call("alice", "GET", `/api/projects/${p.id}/file?path=assets/a.svg`);
+    expect(res.headers.get("Content-Type")).toBe("image/svg+xml");
+    expect(res.headers.get("Content-Security-Policy")).toContain("sandbox");
+  });
+
   it("ドライブ未接続の人はプロジェクトを作れない", async () => {
     const s = setup();
     await s.login("bob", "bob@example.com");

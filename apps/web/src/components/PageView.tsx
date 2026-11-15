@@ -1,7 +1,8 @@
 import type { SaveState } from "./Header";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
-import { createEditor } from "../editor";
+import { AssetsContext } from "../assets";
+import { createEditor, replaceText } from "../editor";
 import type { Workspace } from "../workspace";
 import { formatDate } from "./ListView";
 import { Tile } from "./Tile";
@@ -23,6 +24,8 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
   const view = useRef<EditorView | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const pending = useRef<string | null>(null);
+  const inFlight = useRef(false);
+  const assets = useContext(AssetsContext);
   const [draftTitle, setDraftTitle] = useState(title);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,14 +38,19 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
     const text = pending.current;
     if (text === null) return;
     pending.current = null;
+    inFlight.current = true;
     try {
-      await latest.current.ws.saveBody(latest.current.title, text);
-      setSaving("saved");
+      const saved = await latest.current.ws.saveBody(latest.current.title, text);
+      // 他の人の変更と合わせた結果をエディタにも反映する（入力が続いていなければ）
+      if (saved !== text && pending.current === null && view.current) replaceText(view.current, saved);
+      setSaving(pending.current === null ? "saved" : "saving");
     } catch (e) {
       console.error(e);
       // 失敗した内容は次の保存で再送する
       pending.current ??= text;
       setSaving("error");
+    } finally {
+      inFlight.current = false;
     }
   };
 
@@ -50,6 +58,17 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
     setDraftTitle(title);
     setError(null);
   }, [title]);
+
+  // 他の人の変更が取り込まれたら、編集中でなければエディタに反映する
+  useEffect(
+    () =>
+      ws.subscribe(() => {
+        const p = ws.get(title);
+        if (!p || !view.current || pending.current !== null || inFlight.current) return;
+        replaceText(view.current, p.body);
+      }),
+    [ws, title],
+  );
 
   // ページが変わったらエディタを作り直す
   useEffect(() => {
@@ -65,6 +84,9 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
       },
       {
         exists: (t) => latest.current.ws.exists(t),
+        resolve: assets.resolve,
+        upload: assets.upload,
+        onUploadError: (m) => setError(`画像を保存できませんでした：${m}`),
         open: async (t) => {
           await flush();
           const w = latest.current.ws;

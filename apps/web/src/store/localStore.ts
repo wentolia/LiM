@@ -1,4 +1,4 @@
-import type { Store, StoreEntry } from "@lim/core";
+import { checkRevision, type Store, type StoreEntry, type WriteOptions } from "@lim/core";
 
 interface StoredFile {
   text: string;
@@ -51,8 +51,10 @@ export class LocalStorageStore implements Store {
     return this.enc.encode(f.text);
   }
 
-  async write(path: string, data: Uint8Array, _contentType?: string, updatedAt?: string): Promise<StoreEntry> {
+  async write(path: string, data: Uint8Array, _contentType?: string, opts?: WriteOptions & { updatedAt?: string }): Promise<StoreEntry> {
     const files = this.load();
+    checkRevision(path, files[path] ? String(files[path].revision) : undefined, opts);
+    const updatedAt = opts?.updatedAt;
     const next: StoredFile = {
       text: this.dec.decode(data),
       revision: (files[path]?.revision ?? 0) + 1,

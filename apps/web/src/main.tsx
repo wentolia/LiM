@@ -1,7 +1,8 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Pages } from "./App";
-import { api, ApiError, loginUrl, type Me, type ProjectInfo } from "./api";
+import { api, ApiError, ApiStore, loginUrl, type Me, type ProjectInfo } from "./api";
+import { AssetsContext, type Assets } from "./assets";
 import { Header, type SaveState } from "./components/Header";
 import { Login } from "./components/Login";
 import { Members } from "./components/Members";
@@ -23,7 +24,7 @@ function Root() {
   const [state, setState] = useState<State>({ kind: "checking" });
   const [route, go] = useRoute();
   const [saving, setSaving] = useState<SaveState>("saved");
-  const [open, setOpen] = useState<{ id: string; ws: Workspace } | null>(null);
+  const [open, setOpen] = useState<{ id: string; ws: Workspace; store: ApiStore; assets: Assets } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   // ヘッダーのページ数を最新に保つため、開いている箱の変更を購読する
   useWorkspace(state.kind === "local" ? state.ws : (open?.ws ?? null));
@@ -59,13 +60,41 @@ function Root() {
     setOpen(null);
     setLoadError(null);
     openProject(route.project).then(
-      (ws) => !cancelled && setOpen({ id: route.project!, ws }),
+      ({ ws, store }) =>
+        !cancelled &&
+        setOpen({ id: route.project!, ws, store, assets: { resolve: (src) => store.assetUrl(src), upload: (f) => store.upload(f, f.name) } }),
       (e) => !cancelled && setLoadError(message(e)),
     );
     return () => {
       cancelled = true;
     };
   }, [state.kind, route.project, open?.id]);
+
+  // 他の人の変更を取り込む：10 秒ごと（画面が見えているときだけ）と、画面に戻ったとき
+  useEffect(() => {
+    if (!open) return;
+    let busy = false;
+    const tick = async () => {
+      if (busy || document.visibilityState !== "visible") return;
+      busy = true;
+      try {
+        await open.ws.refresh();
+      } catch (e) {
+        console.warn("refresh failed", e);
+      } finally {
+        busy = false;
+      }
+    };
+    const id = window.setInterval(tick, 10_000);
+    const onVisible = () => void tick();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [open]);
 
   if (state.kind === "checking") return null;
 
@@ -163,7 +192,9 @@ function Root() {
     <div className="app">
       {header({ save: saving, pageCount: open?.id === project.id ? open.ws.list().length : undefined })}
       {open?.id === project.id ? (
-        <Pages ws={open.ws} title={route.title} go={(t) => go({ project: project.id, title: t })} setSaving={setSaving} />
+        <AssetsContext.Provider value={open.assets}>
+          <Pages ws={open.ws} title={route.title} go={(t) => go({ project: project.id, title: t })} setSaving={setSaving} />
+        </AssetsContext.Provider>
       ) : (
         <div className="empty">{loadError ? `読み込めませんでした：${loadError}` : "読み込み中…"}</div>
       )}

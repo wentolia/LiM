@@ -1,4 +1,4 @@
-import { DriveStore, type Store } from "@lim/core";
+import { ConflictError, DriveStore, type Store } from "@lim/core";
 import { decodeIdToken, DRIVE_SCOPE, type Google } from "./google";
 import type { Project, Repo, Role, User } from "./repo";
 
@@ -52,6 +52,18 @@ const cookie = (name: string, value: string, maxAge: number) =>
 export function validPath(path: string | null): path is string {
   return !!path && /^(pages|assets)\/[^/\\]+$/.test(path) && !path.includes("..") && path.length < 300;
 }
+
+const TYPES: Record<string, string> = {
+  md: "text/markdown; charset=utf-8",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  heic: "image/heic",
+};
+export const contentTypeOf = (path: string) => TYPES[path.split(".").pop()!.toLowerCase()] ?? "application/octet-stream";
 
 const normEmail = (e: string) => e.trim().toLowerCase();
 
@@ -224,7 +236,17 @@ export function createApp(deps: Deps) {
       const path = url.searchParams.get("path");
       if (!validPath(path)) throw new HttpError(400, "bad path");
       const data = await (await projectStore(project)).read(path).catch(() => { throw new HttpError(404, "ありません"); });
-      return new Response(data as BlobPart, { headers: { "Content-Type": path.endsWith(".md") ? "text/markdown; charset=utf-8" : "application/octet-stream", "Cache-Control": "no-store" } });
+      const asset = path.startsWith("assets/");
+      return new Response(data as BlobPart, {
+        headers: {
+          "Content-Type": contentTypeOf(path),
+          // 画像はファイル名が変わらないので長めにキャッシュ。ページは常に最新を読む
+          "Cache-Control": asset ? "private, max-age=86400" : "no-store",
+          // 画像として以外は解釈させない（SVG 内のスクリプトなどを無効化）
+          "X-Content-Type-Options": "nosniff",
+          "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+        },
+      });
     }],
     ["PUT", /^\/api\/projects\/(\w+)\/file$/, async (req, m, url) => {
       const { project } = await access(req, m[1]);
@@ -232,8 +254,13 @@ export function createApp(deps: Deps) {
       if (!validPath(path)) throw new HttpError(400, "bad path");
       const data = new Uint8Array(await req.arrayBuffer());
       if (data.length > 10 * 1024 * 1024) throw new HttpError(413, "ファイルが大きすぎます（10MB まで）");
-      const type = req.headers.get("Content-Type")?.split(";")[0] || "text/markdown";
-      return json(await (await projectStore(project)).write(path, data, type));
+      const ifMatch = req.headers.get("If-Match");
+      try {
+        return json(await (await projectStore(project)).write(path, data, contentTypeOf(path), ifMatch === null ? undefined : { ifRevision: ifMatch }));
+      } catch (e) {
+        if (e instanceof ConflictError) return json({ error: e.message, current: e.current }, 409);
+        throw e;
+      }
     }],
     ["DELETE", /^\/api\/projects\/(\w+)\/file$/, async (req, m, url) => {
       const { project } = await access(req, m[1]);

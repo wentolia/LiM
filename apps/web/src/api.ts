@@ -1,4 +1,4 @@
-import type { Store, StoreEntry } from "@lim/core";
+import { ConflictError, type Store, type StoreEntry, type WriteOptions } from "@lim/core";
 
 /* サーバー（/api）とのやりとり */
 
@@ -62,20 +62,36 @@ export class ApiStore implements Store {
     return new Uint8Array(await res.arrayBuffer());
   }
 
-  async write(path: string, data: Uint8Array, contentType = "text/markdown"): Promise<StoreEntry> {
-    const res = await fetch(this.url(path), {
-      method: "PUT",
-      credentials: "same-origin",
-      headers: { "Content-Type": contentType },
-      body: data as BlobPart,
-    });
+  async write(path: string, data: Uint8Array, contentType = "text/markdown", opts?: WriteOptions): Promise<StoreEntry> {
+    const headers: Record<string, string> = { "Content-Type": contentType };
+    if (opts?.ifRevision !== undefined) headers["If-Match"] = opts.ifRevision;
+    const res = await fetch(this.url(path), { method: "PUT", credentials: "same-origin", headers, body: data as BlobPart });
     const body = await res.json().catch(() => ({}));
+    if (res.status === 409) throw new ConflictError(path, body.current ?? "");
     if (!res.ok) throw new ApiError(res.status, body.error ?? `保存できませんでした（${res.status}）`);
     return body as StoreEntry;
   }
 
   async remove(path: string): Promise<void> {
     await call("DELETE", this.url(path));
+  }
+
+  /** 画像などを assets/ に保存し、ページから参照するパス（../assets/…）を返す */
+  async upload(file: Blob, name = "image"): Promise<string> {
+    if (file.size > 10 * 1024 * 1024) throw new Error("画像は 10MB までです");
+    const ext = (file.type.split("/")[1] ?? name.split(".").pop() ?? "png").replace("jpeg", "jpg").replace("svg+xml", "svg");
+    const d = new Date();
+    const p = (n: number) => String(n).padStart(2, "0");
+    const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+    const path = `assets/${stamp}-${Math.random().toString(36).slice(2, 6)}.${ext}`;
+    await this.write(path, new Uint8Array(await file.arrayBuffer()), file.type || "application/octet-stream");
+    return `../${path}`;
+  }
+
+  /** ページ内の画像パス（../assets/x.png）を表示用の URL にする。外部 URL はそのまま */
+  assetUrl(src: string): string {
+    const m = src.match(/^(?:\.\.\/)?(assets\/[^/]+)$/);
+    return m ? this.url(m[1]) : src;
   }
 
   async changes() {
