@@ -1,3 +1,4 @@
+import type { SaveState } from "./Header";
 import { useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { createEditor } from "../editor";
@@ -11,7 +12,7 @@ interface Props {
   onOpen: (title: string) => void;
   onRenamed: (title: string) => void;
   onBack: () => void;
-  setSaving: (saving: boolean) => void;
+  setSaving: (state: SaveState) => void;
 }
 
 const SAVE_DELAY = 600;
@@ -34,8 +35,15 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
     const text = pending.current;
     if (text === null) return;
     pending.current = null;
-    await latest.current.ws.saveBody(latest.current.title, text);
-    setSaving(false);
+    try {
+      await latest.current.ws.saveBody(latest.current.title, text);
+      setSaving("saved");
+    } catch (e) {
+      console.error(e);
+      // 失敗した内容は次の保存で再送する
+      pending.current ??= text;
+      setSaving("error");
+    }
   };
 
   useEffect(() => {
@@ -51,7 +59,7 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
       page.body,
       (text) => {
         pending.current = text;
-        setSaving(true);
+        setSaving("saving");
         window.clearTimeout(timer.current);
         timer.current = window.setTimeout(flush, SAVE_DELAY);
       },

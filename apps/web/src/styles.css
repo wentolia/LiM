@@ -28,7 +28,7 @@ button { cursor: pointer; }
 .header .info { margin-left: auto; display: flex; flex-wrap: wrap; }
 .header .cell { padding: 0 12px; border-left: 1px solid var(--band-rule); display: flex; align-items: center; gap: 6px; min-height: 32px; }
 .header .lamp { width: 8px; height: 8px; background: var(--lamp); }
-.header .lamp.busy { background: var(--select); }
+.header .lamp.saving { background: var(--select); }
 .header .user { background: #fff; color: var(--ink); font-weight: 700; }
 
 /* ツールバー */
@@ -79,3 +79,20 @@ table.list .title { border: 0; background: transparent; padding: 0; color: var(-
   .tile { height: 168px; }
   .page { padding: 12px; }
 }
+
+/* 接続状態 */
+.header .lamp.error { background: #ff8a7a; }
+.header .alert { background: #ff8a7a; color: var(--ink); font-weight: 700; }
+.header .logout { border: 0; border-left: 1px solid var(--band-rule); background: transparent; color: #fff; text-decoration: underline; }
+.header .logout:hover { background: var(--band-rule); }
+
+/* ログイン画面 */
+.login { flex: 1; background: var(--ground); display: flex; align-items: flex-start; justify-content: center; padding: 64px 16px; }
+.login-box { width: 100%; max-width: 420px; background: var(--paper); border: 1px solid var(--rule); padding: 24px; display: flex; flex-direction: column; gap: 12px; }
+.login-box h1 { margin: 0; font-size: 16px; border-bottom: 1px solid var(--ink); padding-bottom: 8px; }
+.login-box p { margin: 0; }
+.login-box .note { color: var(--muted); font-size: 12px; }
+.login-box .primary { height: 36px; border: 1px solid var(--band); background: var(--band); color: #fff; font-weight: 700; }
+.login-box .primary:disabled { opacity: .6; }
+.login-box .plain { border: 0; background: transparent; color: var(--link); text-decoration: underline; padding: 0; align-self: flex-start; }
+.login-box .error { color: var(--missing); font-weight: 700; }

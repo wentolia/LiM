@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { Header } from "./components/Header";
+import { Header, type SaveState } from "./components/Header";
 import { ListView } from "./components/ListView";
 import { PageView } from "./components/PageView";
 import { useRoute, useWorkspace } from "./useWorkspace";
-import type { Workspace } from "./workspace";
+import type { Session } from "./session";
 
-export function App({ ws }: { ws: Workspace }) {
+export function App({ session, onLogin }: { session: Session; onLogin?: () => void }) {
+  const { ws } = session;
   useWorkspace(ws);
   const [title, go] = useRoute();
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<SaveState>("saved");
   const items = ws.list();
 
   const open = async (t: string) => {
@@ -18,7 +19,13 @@ export function App({ ws }: { ws: Workspace }) {
 
   return (
     <div className="app">
-      <Header saving={saving} pageCount={items.length} onHome={() => go(null)} />
+      <Header
+        save={saving}
+        pageCount={items.length}
+        conn={session.conn}
+        onLogin={session.conn.user ? undefined : onLogin}
+        onHome={() => go(null)}
+      />
       {title === null ? (
         <ListView items={items} onOpen={open} onCreate={async () => go(await ws.create())} />
       ) : (
