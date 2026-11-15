@@ -110,6 +110,6 @@ table.list .title { border: 0; background: transparent; padding: 0; color: var(-
 .data h2 { font-size: 14px; margin: 0; }
 .data .note { color: var(--muted); font-size: 12px; margin: 0; }
 .data .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.data button, .data .button { min-height: 34px; border: 1px solid var(--ink); background: #fff; padding: 0 14px; display: inline-flex; align-items: center; cursor: pointer; }
-.data .primary { border-color: var(--band); background: var(--band); color: #fff; font-weight: 700; }
+.data button, .data .button { min-height: 34px; border: 1px solid var(--ink); background: var(--paper); padding: 0 14px; display: inline-flex; align-items: center; cursor: pointer; }
+.data .primary { border-color: var(--band); background: var(--band); color: var(--paper); font-weight: 700; }
 .data button:disabled, .data .button.disabled { opacity: .6; pointer-events: none; }

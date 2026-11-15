@@ -121,6 +121,17 @@ describe("共同編集の部屋", () => {
     expect(a.text.toString()).toBe("1行目（外で編集）\n2行目（追記）");
   });
 
+  it("編集中に外で id が付いても（0004 の移行）、id と編集中の本文の両方を残す", async () => {
+    const s = setup("---\n担当: A\n---\n本文");
+    const a = await s.client();
+    a.text.insert(2, "です");
+    s.f.text = "---\nid: 01JD3Z8Q5N0000000000000000\n担当: A\n---\n本文";
+    s.f.rev++;
+    await s.tick();
+    expect(s.f.text).toBe("---\nid: 01JD3Z8Q5N0000000000000000\n担当: A\n---\n本文です");
+    expect(a.doc.getMap("props").get("id")).toBe("01JD3Z8Q5N0000000000000000");
+  });
+
   it("ファイルが消えていたら（改名・削除）書き出さずに閉じる", async () => {
     const s = setup("a");
     const a = await s.client();

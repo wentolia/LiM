@@ -65,6 +65,25 @@ describe("id の付与（0004）", () => {
   });
 });
 
+describe("同じ題名を同時に作る", () => {
+  it("先に作られていたら混ぜずに、次の番号で作る。exact ならそのページを使う", async () => {
+    const store = new MemoryStore();
+    const a = new Workspace(store);
+    const b = new Workspace(store);
+    await a.load();
+    await b.load();
+    await a.create("買い物");
+    const first = dec.decode(await store.read("pages/買い物.md"));
+    expect(await b.create("買い物")).toBe("買い物 2");
+    expect(dec.decode(await store.read("pages/買い物.md"))).toBe(first);
+    const c = new Workspace(store);
+    await c.load();
+    await a.create("献立");
+    expect(await c.create("献立", { exact: true })).toBe("献立");
+    expect((await store.list("pages/")).map((e) => e.path).sort()).toEqual(["pages/献立.md", "pages/買い物 2.md", "pages/買い物.md"]);
+  });
+});
+
 describe("まとめた書き出しと取り込み（0004）", () => {
   it("ドライブと同じ形の zip。ページだけも選べる", async () => {
     const { store } = await setup({ "pages/A.md": "a", "pages/日本語.md": "あ" });
@@ -102,6 +121,9 @@ describe("まとめた書き出しと取り込み（0004）", () => {
       "家計/pages/a b.md": enc.encode("2"),
       "家計/pages/ｶﾞ:x.md": enc.encode("3"),
       "家計/other/x.txt": enc.encode("?"),
+      "家計/pages/sub/y.md": enc.encode("下の階層"),
+      "__MACOSX/家計/pages/._memo.md": enc.encode("?"),
+      [`家計/pages/${"メモ".normalize("NFD")}.md`]: enc.encode("濁点"),
     });
     const dst = new MemoryStore();
     const existing = [
@@ -110,7 +132,22 @@ describe("まとめた書き出しと取り込み（0004）", () => {
     ];
     const r = await importProject(dst, zip, existing);
     expect(r.existed.sort()).toEqual(["pages/a b.md", "pages/memo.md", "pages/古い名前.md"].sort());
-    expect(r.written.sort()).toEqual(["pages/a_b.md", "pages/ｶﾞ－x.md".normalize("NFC")].sort());
-    expect(r.ignored).toEqual(["家計/other/x.txt"]);
+    expect(r.written.sort()).toEqual(["pages/a_b.md", "pages/メモ.md", "pages/ｶﾞ－x.md".normalize("NFC")].sort());
+    expect(r.ignored.sort()).toEqual(["家計/other/x.txt", "家計/pages/sub/y.md"]);
+    expect(dec.decode(await dst.read("pages/メモ.md"))).toBe("濁点");
+  });
+
+  it("書き出し：同じ名前のファイルが複数あれば (2) を付けて入れる。壊れた zip は平易な文で断る", async () => {
+    const store = new MemoryStore();
+    await store.write("pages/A.md", enc.encode("1"));
+    const list = store.list.bind(store);
+    store.list = async (prefix) => {
+      const xs = await list(prefix);
+      return prefix === "pages/" ? [...xs, ...xs] : xs;
+    };
+    const r = await exportProject(store);
+    expect(r.renamed).toEqual(["pages/A (2).md"]);
+    expect(Object.keys(unzipSync(new Uint8Array(await r.zip.arrayBuffer()))).sort()).toEqual(["README.md", "pages/A (2).md", "pages/A.md"]);
+    await expect(importProject(new MemoryStore(), new Uint8Array([1, 2, 3]), [])).rejects.toThrow("zip ファイルを読めませんでした");
   });
 });

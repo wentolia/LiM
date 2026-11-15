@@ -83,8 +83,7 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
         open: async (t) => {
           await flush();
           const w = latest.current.ws;
-          if (!w.exists(t)) await w.create(t);
-          latest.current.onOpen(w.get(t)?.title ?? t);
+          latest.current.onOpen(w.exists(t) ? w.get(t)!.title : await w.create(t, { exact: true }));
         },
     };
 

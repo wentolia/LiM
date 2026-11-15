@@ -19,6 +19,18 @@ async function eachLimited<T>(items: T[], n: number, fn: (item: T) => Promise<vo
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
 }
 
+/** 一時的な通信の失敗で全体をやり直さないよう、2 回まで読み直す */
+async function readRetry(store: Store, path: string): Promise<Uint8Array> {
+  for (let i = 0; ; i++) {
+    try {
+      return await store.read(path);
+    } catch (e) {
+      if (i >= 2) throw new Error(`「${path}」を読めませんでした。もう一度お試しください`);
+      await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+    }
+  }
+}
+
 /** 同じパスが 2 回目以降に出たら「題名 (2).md」のようにずらす（ドライブは同じフォルダに同名を許すため） */
 function uniquePath(path: string, used: Set<string>): string {
   if (!used.has(path)) return path;
@@ -84,7 +96,7 @@ export async function exportProject(
   ].filter((e) => FILE.test(e.path));
   let done = 0;
   await eachLimited(entries, 4, async (e) => {
-    const data = await store.read(e.path);
+    const data = await readRetry(store, e.path);
     // 画像はもう圧縮されているので、そのまま入れる
     const isPage = e.path.startsWith("pages/");
     add(e.path, data, e.updatedAt, isPage);
@@ -119,7 +131,13 @@ export async function importProject(
   existing: Pick<Page, "title" | "props">[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<ImportResult> {
-  const files = unzipSync(zip);
+  let files: Record<string, Uint8Array>;
+  try {
+    // 取り込まないもの（フォルダ、macOS の付属ファイル）は展開しない
+    files = unzipSync(zip, { filter: (f) => !f.name.endsWith("/") && !f.name.startsWith("__MACOSX/") });
+  } catch {
+    throw new Error("zip ファイルを読めませんでした。「まとめて書き出す」で作ったファイルを選んでください");
+  }
   const result: ImportResult = { written: [], existed: [], ignored: [], failed: [] };
   const titles = new Set(existing.map((p) => normalizeTitle(p.title)));
   const ids = new Set(existing.map((p) => p.props.id).filter(isId));

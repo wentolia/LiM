@@ -15,8 +15,7 @@ export function Pages({ ws, title, go, setSaving }: Props) {
   const items = ws.list();
 
   const open = async (t: string) => {
-    if (!ws.exists(t)) await ws.create(t);
-    go(ws.get(t)?.title ?? t);
+    go(ws.exists(t) ? ws.get(t)!.title : await ws.create(t, { exact: true }));
   };
 
   return title === null ? (

@@ -99,7 +99,7 @@ export class Workspace {
    * 保存する。他の人が先に保存していたら（楽観ロック失敗）、最新を読み直して
    * 3-way マージした結果を保存し直す。どちらの変更も消さない。
    */
-  private async put(title: string, props: Record<string, unknown>, body: string, at?: string): Promise<Page> {
+  private async put(title: string, props: Record<string, unknown>, body: string, at?: string, fresh = false): Promise<Page> {
     // 既存ページは実際のパスに書く（題名の決まりより前に作られたファイル名でも二重にしない）
     const path = at ?? this.get(title)?.path ?? pathOf(title);
     let text = serializePage(props, body);
@@ -115,7 +115,8 @@ export class Workspace {
           this.updated.set(normalizeTitle(page.title), entry.updatedAt);
           return page;
         } catch (e) {
-          if (!(e instanceof ConflictError) || attempt >= 3) throw e;
+          // 新規作成（fresh）で他の人が先に同じ名前で作っていた：混ぜずに呼び出し元へ返す（両方の id と frontmatter が重なるのを防ぐ）
+          if (!(e instanceof ConflictError) || attempt >= 3 || (fresh && !this.revs.has(path))) throw e;
           const theirs = dec.decode(await this.store.read(path));
           text = merge3(this.bases.get(path) ?? "", text, theirs).text;
           this.bases.set(path, theirs);
@@ -179,13 +180,25 @@ export class Workspace {
     return changed;
   }
 
-  /** 新しいページを作る。名前が重複したら番号を付ける */
-  async create(base = "無題"): Promise<string> {
-    let title = sanitizeTitle(base) || "無題";
-    for (let n = 2; this.exists(title); n++) title = `${sanitizeTitle(base) || "無題"} ${n}`;
-    await this.put(title, { id: newId(), created_at: formatTime(new Date()) }, "");
-    this.emit();
-    return title;
+  /**
+   * 新しいページを作る。名前が重複したら番号を付ける。
+   * exact：その題名のページが欲しい（リンクから開くとき）。他の人が先に作っていたら、それを使う
+   */
+  async create(base = "無題", opts: { exact?: boolean } = {}): Promise<string> {
+    const stem = sanitizeTitle(base) || "無題";
+    for (let attempt = 0; ; attempt++) {
+      let title = stem;
+      if (opts.exact && this.exists(title)) return this.get(title)!.title;
+      for (let n = 2; this.exists(title); n++) title = `${stem} ${n}`;
+      try {
+        await this.put(title, { id: newId(), created_at: formatTime(new Date()) }, "", undefined, true);
+        this.emit();
+        return title;
+      } catch (e) {
+        if (!(e instanceof ConflictError) || attempt >= 3) throw e;
+        await this.refresh();
+      }
+    }
   }
 
   /** id を付けるべきページ（無い・形が違う・重複）と、frontmatter が読めず付けられないページ */
@@ -207,7 +220,9 @@ export class Workspace {
     // 他の人の変更を先に取り込み、最新の内容と更新日時で判断する
     await this.refresh();
     const { paths, skipped } = this.missingIds();
-    const now = opts.now ?? Date.now();
+    // 端末の時計が遅れていても、ドライブの最新の更新日時より前にはしない（全件が「編集中」のままになるのを防ぐ）
+    const newest = Math.max(0, ...[...this.updated.values()].map((v) => Date.parse(v) || 0));
+    const now = Math.max(opts.now ?? Date.now(), newest);
     const recentMs = opts.recentMs ?? 120_000;
     let assigned = 0;
     let recent = 0;

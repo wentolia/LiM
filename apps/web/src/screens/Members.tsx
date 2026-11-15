@@ -88,7 +88,11 @@ export function Members({ project, data, onBack }: Props) {
             招待した人には、このアプリのアドレス（{window.location.origin}）を伝えてください。そのメールアドレスの Google アカウントでログインすると、このプロジェクトが表示されます。ページは管理者のドライブに保存されます。
           </p>
         )}
-        {data && <DataPanel projectId={project.id} projectName={project.name} owner={owner} ws={data.ws} store={data.store} />}
+        {data ? (
+          <DataPanel projectId={project.id} projectName={project.name} owner={owner} ws={data.ws} store={data.store} />
+        ) : (
+          <p className="note">ページを読み込むと、データの書き出しなどがここに出ます。</p>
+        )}
       </main>
     </>
   );
