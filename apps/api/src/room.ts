@@ -1,4 +1,4 @@
-import { ConflictError, merge3, parsePage, serializePage, type StoreEntry } from "@lim/core";
+import { ConflictError, markdownCodec, Origin, type Codec, type StoreEntry } from "@lim/core";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
@@ -8,7 +8,7 @@ import * as encoding from "lib0/encoding";
 /*
  * 共同編集の部屋（ドライブ上の 1 ファイル = 1 部屋）。y-websocket と同じやりとり（sync / awareness）で
  * 参加者の変更を配り、数秒おきにファイルへ書き出す。
- * ファイルの形式と Y.Doc の対応は Codec が決める（今は Markdown ページ。表やボードなどは Codec を足すだけ）。
+ * ファイルの形式と Y.Doc の対応は core の Codec が決める（今は markdownCodec。表やボードなどは Codec を足すだけ）。
  * Durable Object からも、テストからも使えるよう、外の世界は Deps で受け取る。
  */
 
@@ -34,55 +34,12 @@ export interface Conn {
   close(code?: number, reason?: string): void;
 }
 
-/** ファイルの中身 ⇔ Y.Doc の対応。部屋ごとに 1 つ作る（状態を持ってよい） */
-export interface Codec {
-  /** ファイルの内容を Y.Doc に反映する（差分だけ当てる） */
-  load(doc: Y.Doc, raw: string): void;
-  /** Y.Doc からファイルの内容を作る */
-  save(doc: Y.Doc): string;
-  /** 他で書き換えられていた（theirs）とき、base からの双方の変更を合わせて Y.Doc に反映する */
-  rebase(doc: Y.Doc, base: string, theirs: string): void;
-}
-
-/** Markdown ページ：本文を Y.Text "body" に。frontmatter（プロパティ）はそのまま保つ */
-export function markdownCodec(): Codec {
-  let props: Record<string, unknown> = {};
-  const body = (doc: Y.Doc) => doc.getText("body");
-  return {
-    load(doc, raw) {
-      const page = parsePage("pages/x.md", raw);
-      props = page.props;
-      applyText(body(doc), page.body);
-    },
-    save: (doc) => serializePage(props, body(doc).toString()),
-    rebase(doc, base, theirs) {
-      const other = parsePage("pages/x.md", theirs);
-      props = other.props;
-      applyText(body(doc), merge3(parsePage("pages/x.md", base).body, body(doc).toString(), other.body).text);
-    },
-  };
-}
-
 export interface RoomDeps {
   file: RoomFile;
   codec?: Codec;
   storage: RoomStorage;
   setTimer: (fn: () => void, ms: number) => unknown;
   clearTimer: (t: unknown) => void;
-}
-
-/** a を b に変えるための最小の置き換えを Y.Text に適用する */
-export function applyText(ytext: Y.Text, next: string): void {
-  const cur = ytext.toString();
-  if (cur === next) return;
-  let a = 0;
-  while (a < cur.length && a < next.length && cur[a] === next[a]) a++;
-  let b = 0;
-  while (b < cur.length - a && b < next.length - a && cur[cur.length - 1 - b] === next[next.length - 1 - b]) b++;
-  ytext.doc!.transact(() => {
-    if (cur.length - a - b > 0) ytext.delete(a, cur.length - a - b);
-    if (next.length - a - b > 0) ytext.insert(a, next.slice(a, next.length - b));
-  }, "drive");
 }
 
 export class Room {
@@ -100,7 +57,7 @@ export class Room {
   gone = false;
 
   constructor(private deps: RoomDeps) {
-    this.codec = deps.codec ?? markdownCodec();
+    this.codec = deps.codec ?? markdownCodec;
     this.awareness.setLocalState(null);
     this.doc.on("update", (update: Uint8Array, origin: unknown) => {
       const enc = encoding.createEncoder();
@@ -108,7 +65,7 @@ export class Room {
       syncProtocol.writeUpdate(enc, update);
       const msg = encoding.toUint8Array(enc);
       for (const c of this.conns.keys()) if (c !== origin) this.safeSend(c, msg);
-      if (origin !== "drive" && origin !== "load") this.schedule();
+      if (origin !== Origin.drive && origin !== Origin.load) this.schedule();
     });
     this.awareness.on("update", ({ added, updated, removed }: Record<string, number[]>, origin: unknown) => {
       const changed = [...added, ...updated, ...removed];
@@ -147,7 +104,7 @@ export class Room {
       this.revision = stat.revision;
       if (saved?.ystate) Y.applyUpdate(this.doc, saved.ystate, "load");
       // 前回から外で（別のアプリや旧方式で）書き換えられていたら、その内容に合わせる
-      this.doc.transact(() => this.codec.load(this.doc, raw), "load");
+      this.doc.transact(() => this.codec.load(this.doc, raw), Origin.load);
     })();
     return this.ready;
   }
@@ -248,7 +205,7 @@ export class Room {
           return;
         }
         const theirs = await this.deps.file.read();
-        this.doc.transact(() => this.codec.rebase(this.doc, this.base, theirs), "drive");
+        this.doc.transact(() => this.codec.rebase(this.doc, this.base, theirs), Origin.drive);
         this.base = theirs;
         this.revision = err.current;
       }

@@ -3,6 +3,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { AssetsContext } from "../assets";
 import { CollabContext, joinRoom } from "../collab";
+import { pageBody } from "@lim/core";
 import { createEditor, replaceText, type LinkHandlers } from "../editor";
 import type { Workspace } from "../workspace";
 import { formatDate } from "./ListView";
@@ -132,10 +133,10 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
           graphTimer = window.setTimeout(() => latest.current.ws.applyLocal(latest.current.title, text), 300);
         },
         handlers,
-        { ytext: room.doc.getText("body"), awareness: room.provider.awareness },
+        { ytext: pageBody(room.doc), awareness: room.provider.awareness },
       );
       view.current = v;
-      if (!room.doc.getText("body").length) v.focus();
+      if (!pageBody(room.doc).length) v.focus();
     });
     return () => {
       disposed = true;
