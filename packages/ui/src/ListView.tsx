@@ -1,6 +1,11 @@
 import { useState } from "react";
-import type { PageItem } from "../workspace";
+import type { Page } from "@lim/core";
 import { Tile } from "./Tile";
+
+export interface PageItem {
+  page: Page;
+  updatedAt: string;
+}
 
 interface Props {
   items: PageItem[];

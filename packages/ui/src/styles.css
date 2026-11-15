@@ -1,19 +1,6 @@
-:root {
-  --ink: #111111;
-  --ink-2: #2b2b2b;
-  --muted: #4b4b4b;
-  --paper: #ffffff;
-  --ground: #edefee;
-  --rule: #bfbfbf;
-  --band: #1f3b36;
-  --band-rule: #4f6b66;
-  --link: #0b4f8a;
-  --missing: #9a3412;
-  --lamp: #7cd992;
-  --select: #ffe58a;
-  --mono: "IBM Plex Mono", "BIZ UDGothic", monospace;
-  --sans: "BIZ UDGothic", system-ui, sans-serif;
-}
+/* 部品の見た目。色・書体・寸法は tokens.css の変数だけを使う */
+@import "./tokens.css";
+
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 13px; line-height: 1.5; }
 button, input { font: inherit; color: inherit; }

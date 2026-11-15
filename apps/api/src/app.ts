@@ -1,4 +1,4 @@
-import { ConflictError, DriveStore, type Store } from "@lim/core";
+import { ConflictError, DriveStore, type Store, type StoreEntry } from "@lim/core";
 import { decodeIdToken, DRIVE_SCOPE, type Google } from "./google";
 import type { Project, Repo, Role, User } from "./repo";
 
@@ -18,15 +18,25 @@ export interface Deps {
 }
 
 export type DriveLike = Store & {
+  readAll?: (prefix: string, opts?: { offset?: number; max?: number }) => Promise<{ entries: (StoreEntry & { data: Uint8Array })[]; total: number }>;
   createFolder(name: string): Promise<string>;
   findFolder(name: string): Promise<string | undefined>;
   folder(dir: string): Promise<string>;
 };
 
-export const defaultOpenDrive = (token: string, root: string | { id: string }): DriveLike =>
-  new DriveStore(async () => token, root);
+/** フォルダ ID の覚え書き（ルートごと）。同じ実行環境ではリクエストをまたいで使う */
+const folderCaches = new Map<string, Map<string, string>>();
+
+export const defaultOpenDrive = (token: string, root: string | { id: string }): DriveLike => {
+  const key = typeof root === "string" ? `name:${root}` : root.id;
+  let cache = folderCaches.get(key);
+  if (!cache) folderCaches.set(key, (cache = new Map()));
+  return new DriveStore(async () => token, root, undefined, undefined, cache);
+};
 
 const ROOT_FOLDER = "SABAKAN";
+/** まとめ読みの 1 回あたりの件数（Workers 無料プランの外部通信 50 回/リクエスト に収める） */
+const BULK_MAX = 40;
 const SESSION_DAYS = 30;
 const SID = "sid";
 const STATE = "oauth_state";
@@ -229,13 +239,17 @@ export function createApp(deps: Deps) {
     }],
 
     // ---- 共同編集（WebSocket） ----
-    ["GET", /^\/api\/projects\/(\w+)\/room\/([^/]+)$/, async (req, m, url) => {
-      // 他サイトからの WebSocket 接続を防ぐ
-      const origin = req.headers.get("Origin");
-      if (origin !== url.origin) throw new HttpError(403, "forbidden");
-      if (req.headers.get("Upgrade") !== "websocket") throw new HttpError(426, "WebSocket で接続してください");
+    ["GET", /^\/api\/projects\/(\w+)\/room(?:\/(.*))?$/, async (req, m, url) => {
+      // ?check=1 は接続できないときの診断（部屋を開けるかだけを JSON で返す）
+      const check = url.searchParams.get("check") === "1" && req.headers.get("Upgrade") !== "websocket";
+      if (!check) {
+        // 他サイトからの WebSocket 接続を防ぐ
+        const origin = req.headers.get("Origin");
+        if (origin !== url.origin) throw new HttpError(403, "forbidden");
+        if (req.headers.get("Upgrade") !== "websocket") throw new HttpError(426, "WebSocket で接続してください");
+      }
       await access(req, m[1]);
-      const path = decodeURIComponent(m[2]);
+      const path = url.searchParams.get("path") ?? decodeURIComponent(m[2] ?? "");
       if (!validPath(path) || !path.endsWith(".md")) throw new HttpError(400, "bad path");
       if (!deps.openRoom) throw new HttpError(501, "共同編集は使えません");
       return deps.openRoom(m[1], path, req);
@@ -247,6 +261,22 @@ export function createApp(deps: Deps) {
       const prefix = url.searchParams.get("prefix") ?? "pages/";
       if (!/^(pages|assets)\/$/.test(prefix)) throw new HttpError(400, "bad prefix");
       return json(await (await projectStore(project)).list(prefix));
+    }],
+    // 初回読み込み用：ページの一覧と本文をまとめて返す（1 回 40 件まで。続きは offset で）
+    ["GET", /^\/api\/projects\/(\w+)\/pages$/, async (req, m, url) => {
+      const { project } = await access(req, m[1]);
+      const store = await projectStore(project);
+      const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0) || 0);
+      const dec = new TextDecoder();
+      if (store.readAll) {
+        const r = await store.readAll("pages/", { offset, max: BULK_MAX });
+        const pages = r.entries.filter((e) => e.path.endsWith(".md")).map(({ data, ...e }) => ({ ...e, text: dec.decode(data) }));
+        return json({ pages, next: offset + BULK_MAX < r.total ? offset + BULK_MAX : null });
+      }
+      const all = (await store.list("pages/")).filter((e) => e.path.endsWith(".md"));
+      const slice = all.slice(offset, offset + BULK_MAX);
+      const pages = await Promise.all(slice.map(async (e) => ({ ...e, text: dec.decode(await store.read(e.path)) })));
+      return json({ pages, next: offset + BULK_MAX < all.length ? offset + BULK_MAX : null });
     }],
     ["GET", /^\/api\/projects\/(\w+)\/file$/, async (req, m, url) => {
       const { project } = await access(req, m[1]);

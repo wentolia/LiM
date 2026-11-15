@@ -37,7 +37,11 @@ function setup() {
     });
   };
   let t = 1_000_000;
-  const app = createApp({ repo, google, clientId: "cid", openDrive, now: () => t, randomId: () => `r${++seq}abcdefghijkl` });
+  const rooms: string[] = [];
+  const app = createApp({
+    repo, google, clientId: "cid", openDrive, now: () => t, randomId: () => `r${++seq}abcdefghijkl`,
+    openRoom: async (pid, path) => { rooms.push(`${pid}:${path}`); return new Response("ok"); },
+  });
 
   const jar = new Map<string, string>(); // ユーザー → sid
   async function login(sub: string, email: string, drive = false) {
@@ -55,7 +59,7 @@ function setup() {
     if (body !== undefined && typeof body !== "string") h["Content-Type"] = "application/json";
     return app(new Request(`${ORIGIN}${path}`, { method, headers: h, body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body) }));
   }
-  return { repo, drives, folders, tokens, login, call, advance: (ms: number) => (t += ms) };
+  return { repo, drives, folders, tokens, rooms, login, call, advance: (ms: number) => (t += ms) };
 }
 
 describe("API", () => {
@@ -127,6 +131,46 @@ describe("API", () => {
     const res = await s.call("alice", "GET", `/api/projects/${p.id}/file?path=assets/a.svg`);
     expect(res.headers.get("Content-Type")).toBe("image/svg+xml");
     expect(res.headers.get("Content-Security-Policy")).toContain("sandbox");
+  });
+
+  it("初回読み込み：一覧と本文をまとめて返し、40 件ごとに続きを返す", async () => {
+    const s = setup();
+    await s.login("alice", "alice@example.com", true);
+    const p = await (await s.call("alice", "POST", "/api/projects", { name: "a" })).json();
+    for (let i = 0; i < 45; i++) await s.call("alice", "PUT", `/api/projects/${p.id}/file?path=pages/p${i}.md`, `本文${i}`);
+    const first = await (await s.call("alice", "GET", `/api/projects/${p.id}/pages`)).json();
+    expect(first.pages).toHaveLength(40);
+    expect(first.pages[0].text).toMatch(/^本文/);
+    expect(first.next).toBe(40);
+    const second = await (await s.call("alice", "GET", `/api/projects/${p.id}/pages?offset=40`)).json();
+    expect(second.pages).toHaveLength(5);
+    expect(second.next).toBe(null);
+    await s.login("bob", "bob@example.com");
+    expect((await s.call("bob", "GET", `/api/projects/${p.id}/pages`)).status).toBe(404);
+  });
+
+  it("共同編集の部屋：パスはクエリで受け取り、メンバーと同一オリジンだけつなぐ", async () => {
+    const s = setup();
+    await s.login("alice", "alice@example.com", true);
+    const p = await (await s.call("alice", "POST", "/api/projects", { name: "a" })).json();
+    const url = `/api/projects/${p.id}/room?path=${encodeURIComponent("pages/議事録.md")}`;
+    const ok = await s.call("alice", "GET", url, undefined, { Upgrade: "websocket", Origin: ORIGIN });
+    expect(ok.status).toBe(200);
+    expect(s.rooms).toEqual([`${p.id}:pages/議事録.md`]);
+    expect((await s.call("alice", "GET", url, undefined, { Upgrade: "websocket", Origin: "https://evil.example" })).status).toBe(403);
+    await s.login("bob", "bob@example.com");
+    expect((await s.call("bob", "GET", url, undefined, { Upgrade: "websocket", Origin: ORIGIN })).status).toBe(404);
+  });
+
+  it("部屋の診断（check=1）は WebSocket なしで部屋へ通し、メンバー以外は断る", async () => {
+    const s = setup();
+    await s.login("alice", "alice@example.com", true);
+    const p = await (await s.call("alice", "POST", "/api/projects", { name: "a" })).json();
+    const url = `/api/projects/${p.id}/room?check=1&path=${encodeURIComponent("pages/議事録.md")}`;
+    expect((await s.call("alice", "GET", url)).status).toBe(200);
+    expect(s.rooms).toEqual([`${p.id}:pages/議事録.md`]);
+    await s.login("bob", "bob@example.com");
+    expect((await s.call("bob", "GET", url)).status).toBe(404);
   });
 
   it("ドライブ未接続の人はプロジェクトを作れない", async () => {

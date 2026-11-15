@@ -4,12 +4,14 @@ import { GoogleOAuth } from "./google";
 import { D1Repo } from "./repo";
 import { Room, type Conn } from "./room";
 import type { Env } from "./index";
+import { roomTarget } from "./roomTarget";
 
 /* Durable Object の最小限の型 */
 interface DOState {
   storage: { get<T>(key: string): Promise<T | undefined>; put(key: string, v: unknown): Promise<void> };
   blockConcurrencyWhile<T>(fn: () => Promise<T>): Promise<T>;
 }
+const roomFolderCache = new Map<string, Map<string, string>>();
 declare const WebSocketPair: { new (): { 0: WebSocket; 1: WebSocket & { accept(): void } } };
 
 /**
@@ -33,7 +35,9 @@ export class PageRoom {
       if (store) return store;
       const project = await repo.getProject(projectId);
       if (!project) throw new Error("project not found");
-      store = new DriveStore(() => ownerAccessToken(repo, google, project.owner_id, Date.now()), { id: project.folder_id });
+      let cache = roomFolderCache.get(project.folder_id);
+      if (!cache) roomFolderCache.set(project.folder_id, (cache = new Map()));
+      store = new DriveStore(() => ownerAccessToken(repo, google, project.owner_id, Date.now()), { id: project.folder_id }, undefined, undefined, cache);
       return store;
     };
     const dec = new TextDecoder();
@@ -55,14 +59,22 @@ export class PageRoom {
   }
 
   async fetch(req: Request): Promise<Response> {
-    if (req.headers.get("Upgrade") !== "websocket") return new Response("expected websocket", { status: 426 });
-    const projectId = req.headers.get("X-Project-Id")!;
-    const path = req.headers.get("X-Path")!;
+    const { projectId, path } = roomTarget(req);
+    const check = new URL(req.url).searchParams.get("check") === "1";
+    if (!check && req.headers.get("Upgrade") !== "websocket") return new Response("expected websocket", { status: 426 });
     // 消えたページの部屋は作り直す
     if (!this.room || (this.room.gone && this.room.size === 0)) {
       this.room = this.makeRoom(projectId, path, new URL(req.url).origin);
     }
     const room = this.room;
+    if (check) {
+      try {
+        await room.load();
+        return Response.json({ ok: true, gone: room.gone, clients: room.size });
+      } catch (e) {
+        return Response.json({ ok: false, error: errorText(e) });
+      }
+    }
 
     const pair = new WebSocketPair();
     const client = pair[0];
@@ -90,9 +102,14 @@ export class PageRoom {
       },
       (err) => {
         console.error("join failed", err);
-        server.close(1011, "load failed");
+        // 理由は 123 バイトまで。日本語は 3 バイトなので短く切る
+        server.close(1011, `load failed: ${errorText(err)}`.slice(0, 40));
       },
     );
     return new Response(null, { status: 101, webSocket: client } as ResponseInit);
   }
+}
+
+function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }

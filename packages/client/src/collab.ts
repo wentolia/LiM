@@ -7,6 +7,14 @@ import { WebsocketProvider } from "y-websocket";
  * エディタ以外の機能（表・ボードなど）も、この部屋に Y.Doc の別の型を置いて使う想定。
  */
 
+/** 画像の表示 URL への変換とアップロード（プロジェクトのときだけ） */
+export interface Assets {
+  resolve: (src: string) => string;
+  upload?: (file: File) => Promise<string>;
+}
+
+export const AssetsContext = createContext<Assets>({ resolve: (s) => s });
+
 export interface CollabConfig {
   projectId: string;
   user: { name: string; email: string };
@@ -30,23 +38,48 @@ export interface Room {
   /** 最初の同期が済んだら resolve */
   synced: Promise<void>;
   onStatus(fn: (s: RoomStatus) => void): void;
+  /** 最後に異常終了したときのコードと理由（診断用） */
+  lastClose(): string | null;
   destroy(): void;
+}
+
+/**
+ * 同時編集につながらないときの診断。サーバーで部屋を開けるかを確かめ、だめなら理由を返す。
+ */
+export async function diagnoseRoom(cfg: CollabConfig, path: string): Promise<string | null> {
+  try {
+    const q = new URLSearchParams({ path, check: "1" });
+    const res = await fetch(`/api/projects/${cfg.projectId}/room?${q}`, { credentials: "same-origin" });
+    const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    if (!res.ok) return `${res.status} ${body.error ?? res.statusText}`;
+    if (body.ok === false) return body.error ?? "部屋を開けません";
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
 }
 
 export function joinRoom(cfg: CollabConfig, path: string): Room {
   const doc = new Y.Doc();
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const provider = new WebsocketProvider(`${proto}//${location.host}/api/projects/${cfg.projectId}/room`, encodeURIComponent(path), doc, {
+  // パスはクエリで渡す（URL のパス部分に %2F を入れると、途中で / に戻されることがある）
+  const provider = new WebsocketProvider(`${proto}//${location.host}/api/projects/${cfg.projectId}`, "room", doc, {
     disableBc: true,
+    params: { path },
   });
   const color = colorOf(cfg.user.email);
   provider.awareness.setLocalStateField("user", { name: cfg.user.name || cfg.user.email, color, colorLight: `${color}33` });
   const listeners = new Set<(s: RoomStatus) => void>();
-  const emit = (s: RoomStatus) => listeners.forEach((fn) => fn(s));
+  let closed = false;
+  let lastClose: string | null = null;
+  const emit = (s: RoomStatus) => {
+    if (!closed) listeners.forEach((fn) => fn(s));
+  };
   provider.on("status", ({ status }) => emit(status));
   // 4404 = ページが改名・削除された（y-websocket は 44xx で再接続しない）
   provider.on("closed", (e) => {
     if (e.code === 4404) emit("gone");
+    else if (e.code !== 1000 && e.code !== 1005) lastClose = `${e.code} ${e.reason ?? ""}`.trim();
   });
   const synced = new Promise<void>((resolve) => {
     if (provider.synced) resolve();
@@ -57,7 +90,11 @@ export function joinRoom(cfg: CollabConfig, path: string): Room {
     provider,
     synced,
     onStatus: (fn) => void listeners.add(fn),
+    lastClose: () => lastClose,
     destroy: () => {
+      // 閉じたあとの状態変化（切断など）は画面に伝えない
+      closed = true;
+      listeners.clear();
       provider.destroy();
       doc.destroy();
     },

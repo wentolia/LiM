@@ -95,3 +95,18 @@ describe("複数人での編集", () => {
     expect(merged).toContain("B の内容");
   });
 });
+
+describe("まとめ読み", () => {
+  it("loadPages がある保存先は 1 回で読み込む", async () => {
+    const store = new MemoryStore();
+    let reads = 0;
+    const bulk = Object.assign(store, {
+      loadPages: async () => [{ path: "pages/A.md", revision: "1", updatedAt: "2026-11-15T00:00:00Z", size: 1, text: "[[B]]" }],
+      read: async () => { reads++; return new Uint8Array(); },
+    });
+    const ws = new Workspace(bulk);
+    await ws.load();
+    expect(ws.get("A")?.links).toEqual(["B"]);
+    expect(reads).toBe(0);
+  });
+});

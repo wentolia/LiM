@@ -1,8 +1,6 @@
-import { ListView } from "./components/ListView";
-import { PageView } from "./components/PageView";
-import type { SaveState } from "./components/Header";
-import { useWorkspace } from "./useWorkspace";
-import type { Workspace } from "./workspace";
+import { useWorkspace, type Workspace } from "@lim/client";
+import { ListView, type SaveState } from "@lim/ui";
+import { PageView } from "./screens/PageView";
 
 interface Props {
   ws: Workspace;
