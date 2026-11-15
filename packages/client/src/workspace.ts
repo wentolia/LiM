@@ -1,4 +1,9 @@
-import { ConflictError, LinkGraph, merge3, normalizeTitle, parsePage, renameLinks, serializePage, type Page, type Store } from "@lim/core";
+import { ConflictError, LinkGraph, merge3, normalizeTitle, parsePage, renameLinks, serializePage, type Page, type Store, type StoreEntry } from "@lim/core";
+
+/** 一覧と本文をまとめて返せる保存先 */
+export interface BulkLoader {
+  loadPages(): Promise<(StoreEntry & { text: string })[]>;
+}
 
 export interface PageItem {
   page: Page;
@@ -41,11 +46,11 @@ export class Workspace {
   }
 
   async load(): Promise<void> {
-    const entries = await this.store.list("pages/");
-    const graph = new LinkGraph();
-    this.updated.clear();
-    const md = entries.filter((e) => e.path.endsWith(".md"));
-    // 通信先が遠い（サーバー経由のドライブ）ので、6 件ずつ並行に読む
+    // まとめ読みできる保存先（サーバー経由）なら 1 回の往復で済ませる
+    const bulk = (this.store as Partial<BulkLoader>).loadPages;
+    if (bulk) return this.loadFrom(await bulk.call(this.store));
+    const md = (await this.store.list("pages/")).filter((e) => e.path.endsWith(".md"));
+    // 1 件ずつ読む保存先は、6 件ずつ並行に読む
     const texts: string[] = new Array(md.length);
     let next = 0;
     const worker = async () => {
@@ -55,15 +60,22 @@ export class Workspace {
       }
     };
     await Promise.all(Array.from({ length: Math.min(6, md.length) }, worker));
+    this.loadFrom(md.map((e, i) => ({ ...e, text: texts[i] })));
+  }
+
+  private loadFrom(files: (StoreEntry & { text: string })[]): void {
+    const graph = new LinkGraph();
+    this.updated.clear();
     this.revs.clear();
     this.bases.clear();
-    md.forEach((e, i) => {
+    for (const e of files) {
+      if (!e.path.endsWith(".md")) continue;
       this.revs.set(e.path, e.revision);
-      this.bases.set(e.path, texts[i]);
-      const page = parsePage(e.path, texts[i]);
+      this.bases.set(e.path, e.text);
+      const page = parsePage(e.path, e.text);
       graph.upsert(page);
       this.updated.set(normalizeTitle(page.title), e.updatedAt);
-    });
+    }
     this.graph = graph;
     this.emit();
   }

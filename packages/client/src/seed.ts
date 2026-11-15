@@ -1,4 +1,4 @@
-import { LocalStorageStore } from "./store/localStore";
+import { LocalStorageStore } from "./localStore";
 import { pathOf } from "./workspace";
 
 /** 初回起動時のサンプル。本・日記・タスク・メモを区別せず同じ箱に入れる */

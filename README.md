@@ -26,13 +26,17 @@ Cosense の書きやすさと Google ドキュメントの整える力を、**�
 - 保存：Google ドライブ（`pages/*.md`, `assets/*`）— `Store` I/F で差し替え可能
 - 処理：Cloudflare Pages / Workers / D1（索引）/ Durable Objects + Yjs（共同編集）
 
-## パッケージ
+## パッケージ（依存は上から下への一方向）
 
-| パス | 中身 |
-| --- | --- |
-| `packages/core` | Page の解析・書き出し、リンクグラフ（2hop）、Query エンジン、Store I/F |
-| `apps/web` | Web アプリ（Vite + React + CodeMirror 6）。プロジェクト一覧、ページ一覧（ギャラリー／表）とページ編集、メンバー |
-| `apps/api` | Cloudflare Worker（`/api/*`）。Google ログイン、プロジェクトとメンバー（D1）、管理者のドライブへの読み書き |
+| パス | 役割 | 依存してよいもの |
+| --- | --- | --- |
+| `packages/core` | エンジン（純粋 TS）：Page の解析・書き出し、リンクグラフ、Query、Store I/F、DriveStore、3-way マージ、ページの Y.Doc の形と書き込み操作（`ydoc.ts`） | なし |
+| `packages/client` | 画面を持たない接続部：Workspace（ページの箱・同期）、サーバー API、共同編集の部屋への接続、ルート、React フック | core |
+| `packages/ui` | 見た目：デザイントークン（`tokens.css`）、部品の CSS、ヘッダー・タイル・一覧・ログイン、エディタ | core |
+| `apps/web` | 画面の組み立て（ログイン → プロジェクト → ページ）。client と ui をつなぐだけ | core / client / ui |
+| `apps/api` | サーバー（Cloudflare Worker）：ログイン、プロジェクト・メンバー（D1）、ドライブ、共同編集の部屋（Durable Object） | core |
+
+見た目を変えるときは `packages/ui`（まず `tokens.css`）だけを触る。ui は client を知らないので、データの取り方を気にせず作り直せる。
 
 ## 開発
 

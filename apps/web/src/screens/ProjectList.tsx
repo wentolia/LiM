@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { loginUrl, type Me, type ProjectInfo } from "../api";
+import { loginUrl, type Me, type ProjectInfo } from "@lim/client";
 
 interface Props {
   me: Me;

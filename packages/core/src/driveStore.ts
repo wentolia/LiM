@@ -26,14 +26,18 @@ export type DriveRoot = string | { id: string };
  * ブラウザでも Cloudflare Workers でも動く（fetch / Blob / FormData のみ使用）。
  */
 export class DriveStore implements Store {
-  private folders = new Map<string, string>(); // "" → ルート, "pages" → ルート/pages
   private ids = new Map<string, string>(); // path → fileId
 
+  /**
+   * folders：フォルダ ID の覚え書き（"" → ルート, "pages" → ルート/pages）。
+   * フォルダは消えない前提なので、サーバーではリクエストをまたいで共有して往復を減らす。
+   */
   constructor(
     private getToken: () => Promise<string>,
     private root: DriveRoot = "SABAKAN",
     private fetcher: Fetch = (...a) => fetch(...a),
     private onAuthError: () => void = () => {},
+    private folders: Map<string, string> = new Map(),
   ) {}
 
   private async request(url: string, init: RequestInit = {}, retry = true): Promise<Response> {
@@ -122,6 +126,22 @@ export class DriveStore implements Store {
     const found = await this.search(`name = '${this.esc(name)}' and '${await this.folder(dir)}' in parents and trashed = false`);
     if (found[0]) this.entry(path, found[0]);
     return found[0]?.id;
+  }
+
+  /** 一覧と中身をまとめて読む（並行数 limit）。list で得た ID を使うので、1 ファイル 1 往復で済む */
+  async readAll(prefix: string, opts: { offset?: number; max?: number; limit?: number } = {}): Promise<{ entries: (StoreEntry & { data: Uint8Array })[]; total: number }> {
+    const all = await this.list(prefix);
+    const slice = all.slice(opts.offset ?? 0, (opts.offset ?? 0) + (opts.max ?? all.length));
+    const out: (StoreEntry & { data: Uint8Array })[] = new Array(slice.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < slice.length) {
+        const i = next++;
+        out[i] = { ...slice[i], data: await this.read(slice[i].path) };
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(opts.limit ?? 8, slice.length) }, worker));
+    return { entries: out, total: all.length };
   }
 
   async read(path: string): Promise<Uint8Array> {

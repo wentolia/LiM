@@ -1,6 +1,6 @@
 import { ApiStore } from "./api";
 import { seedIfEmpty } from "./seed";
-import { LocalStorageStore } from "./store/localStore";
+import { LocalStorageStore } from "./localStore";
 import { Workspace } from "./workspace";
 
 const MODE_KEY = "sabakan:mode";

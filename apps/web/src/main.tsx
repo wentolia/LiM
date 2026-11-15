@@ -1,17 +1,29 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Pages } from "./App";
-import { api, ApiError, ApiStore, loginUrl, type Me, type ProjectInfo } from "./api";
-import { AssetsContext, type Assets } from "./assets";
-import { CollabContext, type CollabConfig } from "./collab";
-import { Header, type SaveState } from "./components/Header";
-import { Login } from "./components/Login";
-import { Members } from "./components/Members";
-import { ProjectList } from "./components/ProjectList";
-import { lastMode, openLocal, openProject, setMode } from "./session";
-import { useRoute, useWorkspace } from "./useWorkspace";
-import type { Workspace } from "./workspace";
-import "./styles.css";
+import {
+  api,
+  ApiError,
+  ApiStore,
+  AssetsContext,
+  CollabContext,
+  lastMode,
+  loginUrl,
+  openLocal,
+  openProject,
+  setMode,
+  useRoute,
+  useWorkspace,
+  type Assets,
+  type CollabConfig,
+  type Me,
+  type ProjectInfo,
+  type Workspace,
+} from "@lim/client";
+import { Header, ImageContext, Login, type SaveState } from "@lim/ui";
+import "@lim/ui/styles.css";
+import { Members } from "./screens/Members";
+import { ProjectList } from "./screens/ProjectList";
 
 type State =
   | { kind: "checking" }
@@ -38,8 +50,7 @@ function Root() {
   const checkServer = async () => {
     const loginError = window.location.hash === "#/login-error" ? "ログインできませんでした。もう一度お試しください。" : null;
     try {
-      const me = await api.me();
-      const projects = await api.projects();
+      const [me, projects] = await Promise.all([api.me(), api.projects()]);
       setMode("server");
       setState({ kind: "server", me, projects });
     } catch (e) {
@@ -200,9 +211,11 @@ function Root() {
       {header({ save: saving, pageCount: open?.id === project.id ? open.ws.list().length : undefined })}
       {open?.id === project.id ? (
         <AssetsContext.Provider value={open.assets}>
-          <CollabContext.Provider value={open.collab}>
-            <Pages ws={open.ws} title={route.title} go={(t) => go({ project: project.id, title: t })} setSaving={setSaving} />
-          </CollabContext.Provider>
+          <ImageContext.Provider value={open.assets}>
+            <CollabContext.Provider value={open.collab}>
+              <Pages ws={open.ws} title={route.title} go={(t) => go({ project: project.id, title: t })} setSaving={setSaving} />
+            </CollabContext.Provider>
+          </ImageContext.Provider>
         </AssetsContext.Provider>
       ) : (
         <div className="empty">{loadError ? `読み込めませんでした：${loadError}` : "読み込み中…"}</div>

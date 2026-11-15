@@ -10,6 +10,7 @@ interface DOState {
   storage: { get<T>(key: string): Promise<T | undefined>; put(key: string, v: unknown): Promise<void> };
   blockConcurrencyWhile<T>(fn: () => Promise<T>): Promise<T>;
 }
+const roomFolderCache = new Map<string, Map<string, string>>();
 declare const WebSocketPair: { new (): { 0: WebSocket; 1: WebSocket & { accept(): void } } };
 
 /**
@@ -33,7 +34,9 @@ export class PageRoom {
       if (store) return store;
       const project = await repo.getProject(projectId);
       if (!project) throw new Error("project not found");
-      store = new DriveStore(() => ownerAccessToken(repo, google, project.owner_id, Date.now()), { id: project.folder_id });
+      let cache = roomFolderCache.get(project.folder_id);
+      if (!cache) roomFolderCache.set(project.folder_id, (cache = new Map()));
+      store = new DriveStore(() => ownerAccessToken(repo, google, project.owner_id, Date.now()), { id: project.folder_id }, undefined, undefined, cache);
       return store;
     };
     const dec = new TextDecoder();

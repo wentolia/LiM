@@ -90,6 +90,19 @@ describe("DriveStore", () => {
     expect(dec.decode(await s.read("pages/a.md"))).toBe("2");
   });
 
+  it("readAll は一覧の ID を使い、1 ファイル 1 往復で読む。フォルダ ID は共有の覚え書きを使う", async () => {
+    const d = fakeDrive();
+    const cache = new Map<string, string>();
+    const w = new DriveStore(async () => "tok", "SABAKAN", d.fetcher, undefined, cache);
+    for (const n of ["a", "b", "c"]) await w.write(`pages/${n}.md`, enc.encode(n));
+    d.calls.length = 0;
+    const s = new DriveStore(async () => "tok", "SABAKAN", d.fetcher, undefined, cache);
+    const r = await s.readAll("pages/");
+    expect(r.entries.map((e) => dec.decode(e.data)).sort()).toEqual(["a", "b", "c"]);
+    // 一覧 1 回 + 中身 3 回。フォルダの検索はしない
+    expect(d.calls).toHaveLength(4);
+  });
+
   it("削除はゴミ箱へ移す", async () => {
     const d = fakeDrive();
     const s = new DriveStore(async () => "tok", "SABAKAN", d.fetcher);

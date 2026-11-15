@@ -7,7 +7,6 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
@@ -21,18 +20,10 @@
     "vitest": "^5.1.0"
   },
   "dependencies": {
-    "@codemirror/commands": "^6.11.1",
-    "@codemirror/lang-markdown": "^6.5.2",
-    "@codemirror/language": "^6.13.1",
-    "@codemirror/state": "^6.7.6",
-    "@codemirror/view": "^6.43.15",
+    "@lim/client": "*",
     "@lim/core": "*",
+    "@lim/ui": "*",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "y-codemirror.next": "^0.3.6",
-    "y-protocols": "^1.0.7",
-    "y-websocket": "^3.1.0",
-    "yaml": "^2.9.1",
-    "yjs": "^13.6.33"
+    "react-dom": "^19.3.1"
   }
 }
