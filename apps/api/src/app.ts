@@ -91,6 +91,9 @@ export const contentTypeOf = (path: string) => TYPES[path.split(".").pop()!.toLo
 
 const normEmail = (e: string) => e.trim().toLowerCase();
 
+/** 部屋への WebSocket 接続の直近の結果（診断用。プロジェクト:パスごと、同じ isolate の中だけ） */
+const roomAttempts = new Map<string, { at: string; origin: string | null; upgrade: string | null; result: string }>();
+
 export function createApp(deps: Deps) {
   const now = deps.now ?? (() => Date.now());
   const rid = deps.randomId ?? (() => crypto.randomUUID().replace(/-/g, ""));
@@ -240,19 +243,38 @@ export function createApp(deps: Deps) {
 
     // ---- 共同編集（WebSocket） ----
     ["GET", /^\/api\/projects\/(\w+)\/room(?:\/(.*))?$/, async (req, m, url) => {
-      // ?check=1 は接続できないときの診断（部屋を開けるかだけを JSON で返す）
+      const path = url.searchParams.get("path") ?? decodeURIComponent(m[2] ?? "");
+      const key = `${m[1]}:${path}`;
+      // ?check=1 は接続できないときの診断（部屋を開けるか＋直近の WebSocket 接続の結果を JSON で返す）
       const check = url.searchParams.get("check") === "1" && req.headers.get("Upgrade") !== "websocket";
-      if (!check) {
+      if (check) {
+        await access(req, m[1]);
+        if (!validPath(path) || !path.endsWith(".md")) throw new HttpError(400, "bad path");
+        if (!deps.openRoom) throw new HttpError(501, "共同編集は使えません");
+        const res = await deps.openRoom(m[1], path, req);
+        const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        return json({ ...body, lastAttempt: roomAttempts.get(key) ?? null });
+      }
+      const note = (result: string) => {
+        roomAttempts.delete(key);
+        roomAttempts.set(key, { at: new Date(now()).toISOString(), origin: req.headers.get("Origin"), upgrade: req.headers.get("Upgrade"), result });
+        if (roomAttempts.size > 200) roomAttempts.delete(roomAttempts.keys().next().value!);
+      };
+      try {
         // 他サイトからの WebSocket 接続を防ぐ
         const origin = req.headers.get("Origin");
-        if (origin !== url.origin) throw new HttpError(403, "forbidden");
+        if (origin !== url.origin) throw new HttpError(403, `forbidden origin (expected ${url.origin})`);
         if (req.headers.get("Upgrade") !== "websocket") throw new HttpError(426, "WebSocket で接続してください");
+        await access(req, m[1]);
+        if (!validPath(path) || !path.endsWith(".md")) throw new HttpError(400, "bad path");
+        if (!deps.openRoom) throw new HttpError(501, "共同編集は使えません");
+        const res = await deps.openRoom(m[1], path, req);
+        note(String(res.status));
+        return res;
+      } catch (e) {
+        note(e instanceof HttpError ? `${e.status} ${e.message}` : `error ${(e as Error).message}`);
+        throw e;
       }
-      await access(req, m[1]);
-      const path = url.searchParams.get("path") ?? decodeURIComponent(m[2] ?? "");
-      if (!validPath(path) || !path.endsWith(".md")) throw new HttpError(400, "bad path");
-      if (!deps.openRoom) throw new HttpError(501, "共同編集は使えません");
-      return deps.openRoom(m[1], path, req);
     }],
 
     // ---- ファイル（ページ・画像） ----

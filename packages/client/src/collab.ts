@@ -50,10 +50,16 @@ export async function diagnoseRoom(cfg: CollabConfig, path: string): Promise<str
   try {
     const q = new URLSearchParams({ path, check: "1" });
     const res = await fetch(`/api/projects/${cfg.projectId}/room?${q}`, { credentials: "same-origin" });
-    const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    const body = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      error?: string;
+      lastAttempt?: { at: string; result: string; origin: string | null } | null;
+    };
     if (!res.ok) return `${res.status} ${body.error ?? res.statusText}`;
     if (body.ok === false) return body.error ?? "部屋を開けません";
-    return null;
+    const a = body.lastAttempt;
+    if (!a) return "部屋は正常。WebSocket の接続要求がサーバーに届いていません（ネットワーク・プロキシ・ブラウザ拡張が止めている可能性）";
+    return `部屋は正常。サーバーが受けた直近の接続：${a.result}（${a.at}、Origin ${a.origin ?? "なし"}）`;
   } catch (e) {
     return (e as Error).message;
   }
@@ -79,7 +85,16 @@ export function joinRoom(cfg: CollabConfig, path: string): Room {
   // 4404 = ページが改名・削除された（y-websocket は 44xx で再接続しない）
   provider.on("closed", (e) => {
     if (e.code === 4404) emit("gone");
-    else if (e.code !== 1000 && e.code !== 1005) lastClose = `${e.code} ${e.reason ?? ""}`.trim();
+  });
+  // 診断用：開けたか、どう閉じたかを覚えておく
+  let opened = false;
+  let attempts = 0;
+  provider.on("status", ({ status }) => {
+    if (status === "connected") opened = true;
+    if (status === "connecting") attempts++;
+  });
+  provider.on("connection-close", (e) => {
+    if (e) lastClose = `${opened ? "接続後に切断" : "接続できず"}・試行${attempts}回・コード${e.code}${e.reason ? ` ${e.reason}` : ""}`;
   });
   const synced = new Promise<void>((resolve) => {
     if (provider.synced) resolve();

@@ -140,7 +140,7 @@ export function PageView({ ws, title, onOpen, onRenamed, onBack, setSaving }: Pr
       // 原因を画面に出す（サーバーで部屋を開けるかを確かめる）
       void diagnoseRoom(collab, page.path).then((why) => {
         if (disposed) return;
-        const detail = why ?? closeInfo ?? "サーバー側は正常。ネットワークやブラウザ拡張が WebSocket を止めている可能性があります";
+        const detail = [why, closeInfo && `ブラウザ側：${closeInfo}`].filter(Boolean).join(" ／ ") || "不明";
         setError(`${base} 原因：${detail}`);
       });
       fallback = plain(latest.current.ws.get(latest.current.title)?.body ?? "");

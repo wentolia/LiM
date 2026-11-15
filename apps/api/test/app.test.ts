@@ -167,8 +167,14 @@ describe("API", () => {
     await s.login("alice", "alice@example.com", true);
     const p = await (await s.call("alice", "POST", "/api/projects", { name: "a" })).json();
     const url = `/api/projects/${p.id}/room?check=1&path=${encodeURIComponent("pages/議事録.md")}`;
-    expect((await s.call("alice", "GET", url)).status).toBe(200);
+    const first = await s.call("alice", "GET", url);
+    expect(first.status).toBe(200);
     expect(s.rooms).toEqual([`${p.id}:pages/議事録.md`]);
+    // 直近の WebSocket 接続の結果（ここでは Origin 違いで断られた）が診断に出る
+    const ws = url.replace("check=1&", "");
+    await s.call("alice", "GET", ws, undefined, { Upgrade: "websocket", Origin: "https://evil.example" });
+    const after = await (await s.call("alice", "GET", url)).json();
+    expect(after.lastAttempt.result).toMatch(/^403 forbidden origin/);
     await s.login("bob", "bob@example.com");
     expect((await s.call("bob", "GET", url)).status).toBe(404);
   });
