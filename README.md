@@ -6,12 +6,12 @@ Cosense の書きやすさと Google ドキュメントの整える力を、**�
 
 ## コンセプト：Less is More
 
-コアは 3 要素だけ。機能はすべてこの組み合わせで表現する。
+コアは Page・Type・Command・Query・View の 5 要素（決定と理由は [docs/decisions/0001](docs/decisions/0001-設計思想とデータの決まり.md)、開発の決まりは [CLAUDE.md](CLAUDE.md)）。下は今ある 3 要素。Type（型の台帳）と Command（書き込みの関所）はこれから作る。
 
 | 要素 | 定義 |
 | --- | --- |
 | **Page** | 1 Markdown ファイル。本文 + プロパティ（frontmatter）+ リンク |
-| **Query** | Page 集合の絞り込み（`where` / `sort` / `group` / `view` の 4 語） |
+| **Query** | Page 集合の絞り込み（今は `where` / `sort` / `group` / `view` の 4 語。集計は今後 Query に足す） |
 | **View** | 結果の描き方（document / cards / table / board / calendar …） |
 
 | 機能 | 実体 |
@@ -58,7 +58,7 @@ npm run build      # 型チェック + 本番ビルド（apps/web/dist）
 - 役割：管理者（招待・外す）／メンバー（ページの読み書き）
 - 管理者が最初にドライブを接続したとき、以前の SABAKAN/pages があれば「マイページ」プロジェクトとして取り込む
 - スコープは `drive.file`（SABAKAN が作ったファイルだけ）。削除はドライブのゴミ箱へ
-- 「このブラウザだけで使う」を選ぶと localStorage に保存（ログイン不要）
+- 「このブラウザだけで使う」を選ぶと localStorage に保存（ログイン不要）。**廃止予定**（決定 0001 の I）
 - 画像：貼り付け・ドロップで `assets/<日時>.<拡張子>` に保存し、ページには `![](../assets/…)` と書く（プロジェクトのみ）
 - 他の人の変更：10 秒ごと／画面に戻ったときに取り込む。編集中でなければ開いているページにも反映
 - リアルタイム共同編集（プロジェクト）：ページを開くと、そのファイルの「部屋」（Durable Object `PageRoom`）に WebSocket でつながる。Yjs で文字単位に合成し、相手のカーソルと名前を表示。部屋は 3 秒おき・最後の人が抜けたときにドライブへ書き出す
@@ -70,9 +70,9 @@ npm run build      # 型チェック + 本番ビルド（apps/web/dist）
 | 土台 | 使い方 |
 |---|---|
 | ログイン・プロジェクト・メンバー（`apps/api/src/app.ts`, D1） | 新しい機能も「プロジェクト内のファイル」を読み書きするだけで、権限はそのまま効く |
-| ファイル API（`/api/projects/:id/file`, `files`） | `pages/` `assets/` 以外のフォルダが要るときは `validPath` に足す |
-| 共同編集の部屋（`apps/api/src/room.ts`） | 1 ファイル = 1 部屋。形式ごとに `Codec`（ファイル ⇔ Y.Doc）を足す。今は Markdown（`markdownCodec`） |
-| クライアント（`apps/web/src/collab.ts`） | `joinRoom(cfg, path)` で Y.Doc を受け取り、表・ボードなどは Y.Map / Y.Array を使う |
+| ファイル API（`/api/projects/:id/file`, `files`） | 今の作成・改名・削除・画像の経路。Command ができたら画像以外は閉じる。フォルダを増やすのは構造の変更（CLAUDE.md） |
+| 共同編集の部屋（`apps/api/src/room.ts`） | 1 ファイル = 1 部屋。今は Markdown（`markdownCodec`）だけ。新しい形式・`Codec` は構造の変更（CLAUDE.md） |
+| クライアント（`packages/client/src/collab.ts`） | `joinRoom(cfg, path)` で Y.Doc を受け取る。表・ボードも Page と Query・View で表す（Y.Doc の型を足すのは構造の変更） |
 
 ### 設定
 
