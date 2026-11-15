@@ -1,6 +1,7 @@
 import { createApp, defaultOpenDrive } from "./app";
 import { GoogleOAuth } from "./google";
 import { D1Repo, type D1Database } from "./repo";
+import { tokenCipher } from "./tokenCipher";
 
 export { PageRoom } from "./roomObject";
 import { roomRequest } from "./roomTarget";
@@ -15,6 +16,8 @@ export interface Env {
   ROOMS: DONamespace;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
+  /** ドライブの鍵を暗号化する鍵（32 バイトの base64）。未登録の間は平文で動く（決定 0002） */
+  DRIVE_TOKEN_KEY?: string;
   ASSETS: { fetch(req: Request): Promise<Response> };
 }
 
@@ -26,7 +29,7 @@ export default {
       return Response.json({ error: "サーバーの設定（GOOGLE_CLIENT_SECRET）がまだです" }, { status: 503 });
     }
     const app = createApp({
-      repo: new D1Repo(env.DB),
+      repo: new D1Repo(env.DB, await tokenCipher(env.DRIVE_TOKEN_KEY)),
       google: new GoogleOAuth({
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,
