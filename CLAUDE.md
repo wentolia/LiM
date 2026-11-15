@@ -22,7 +22,7 @@ SABAKAN（旧称 LiM）で作業する Claude 向けの決まり。概要・開�
 - 予約された項目名：`id`、`type`、`tags`、`created_at`、`updated_at`、`updated_by`、`ext`（外部 ID 用。例：`ext.gcal`）。機能ごとに内部用の項目を増やさない
 - 金額は整数（円）、日付は ISO 形式。宣言に無い項目も消さずに保持する。予定：比較や集計を、推測（今の `compare()` は数値に見えれば数値）ではなく宣言された種類で行う
 - 既存の `.md` が読めなくなる変更（frontmatter の意味、パスの決まり、リンクの書き方）はしない。形を変えるときは「移行」を書く（下の「構造の変更」）
-- 予定：D1 の変更は番号付きの migration にする。今は `apps/api/src/repo.ts` の `SCHEMA`（`CREATE TABLE IF NOT EXISTS`）を起動時に流すだけで、`apps/api/schema.sql` と二重にある。それまでは両方に同じ変更を入れる。列の変更は IF NOT EXISTS では効かないので構造の変更として相談する（`wrangler.jsonc` の `migrations` は Durable Object 用で別物）
+- D1 の表の定義は `apps/api/src/migrations.ts` の 1 か所だけ（決定 0002）。変えるときは `MIGRATIONS` の末尾に番号を足し、書いた番号の中身は直さない。古いコードと同時に動いても壊れない変更にする（列は足すだけ。消すのは使わなくなってから別の番号で）。`IF NOT EXISTS` は 1 番だけの例外。migration の誤りは全員を止めるので、`npm test` が通ってからマージする（`wrangler.jsonc` の `migrations` は Durable Object 用で別物）
 
 ## 書き込みの経路
 
