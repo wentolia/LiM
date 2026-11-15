@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MIGRATIONS, migrate, type Migration } from "../src/migrations";
 import { D1Repo, type D1Database } from "../src/repo";
 import { freshD1 } from "./d1";
+import { tokenCipher } from "../src/tokenCipher";
 
 const tables = async (d: D1Database) =>
   (await d.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE '\\_cf%' ESCAPE '\\' ORDER BY name").all<{ name: string }>()).results.map((r) => r.name);
@@ -85,7 +86,7 @@ describe("migrate（ローカルの D1）", { timeout: 20_000 }, () => {
 
   it("D1Repo は DB ごとに、最初の読み書きの前に当てる", async () => {
     for (const d of [await freshD1(), await freshD1()]) {
-      const repo = new D1Repo(d, null);
+      const repo = new D1Repo(d, (await tokenCipher(btoa("k".repeat(32))))!);
       await repo.upsertUser({ id: "u1", email: "a@example.com", name: "A" });
       expect(await repo.getUser("u1")).toEqual({ id: "u1", email: "a@example.com", name: "A" });
       expect(await versions(d)).toEqual(all);
