@@ -3,6 +3,7 @@ import { GoogleOAuth } from "./google";
 import { D1Repo, type D1Database } from "./repo";
 
 export { PageRoom } from "./roomObject";
+import { roomRequest } from "./roomTarget";
 
 interface DONamespace {
   idFromName(name: string): unknown;
@@ -36,10 +37,7 @@ export default {
       // 共同編集の部屋：メンバー確認のあと、ページごとの Durable Object へつなぐ
       openRoom: (projectId, path, request) => {
         const stub = env.ROOMS.get(env.ROOMS.idFromName(`${projectId}:${path}`));
-        const headers = new Headers(request.headers);
-        headers.set("X-Project-Id", projectId);
-        headers.set("X-Path", path);
-        return stub.fetch(new Request(request.url, { headers }));
+        return stub.fetch(roomRequest(request, projectId, path));
       },
     });
     return app(req);

@@ -52,7 +52,10 @@ export function joinRoom(cfg: CollabConfig, path: string): Room {
   const color = colorOf(cfg.user.email);
   provider.awareness.setLocalStateField("user", { name: cfg.user.name || cfg.user.email, color, colorLight: `${color}33` });
   const listeners = new Set<(s: RoomStatus) => void>();
-  const emit = (s: RoomStatus) => listeners.forEach((fn) => fn(s));
+  let closed = false;
+  const emit = (s: RoomStatus) => {
+    if (!closed) listeners.forEach((fn) => fn(s));
+  };
   provider.on("status", ({ status }) => emit(status));
   // 4404 = ページが改名・削除された（y-websocket は 44xx で再接続しない）
   provider.on("closed", (e) => {
@@ -68,6 +71,9 @@ export function joinRoom(cfg: CollabConfig, path: string): Room {
     synced,
     onStatus: (fn) => void listeners.add(fn),
     destroy: () => {
+      // 閉じたあとの状態変化（切断など）は画面に伝えない
+      closed = true;
+      listeners.clear();
       provider.destroy();
       doc.destroy();
     },
