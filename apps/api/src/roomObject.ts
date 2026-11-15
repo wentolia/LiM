@@ -4,6 +4,7 @@ import { GoogleOAuth } from "./google";
 import { D1Repo } from "./repo";
 import { Room, type Conn } from "./room";
 import type { Env } from "./index";
+import { roomTarget } from "./roomTarget";
 
 /* Durable Object の最小限の型 */
 interface DOState {
@@ -59,8 +60,7 @@ export class PageRoom {
 
   async fetch(req: Request): Promise<Response> {
     if (req.headers.get("Upgrade") !== "websocket") return new Response("expected websocket", { status: 426 });
-    const projectId = req.headers.get("X-Project-Id")!;
-    const path = req.headers.get("X-Path")!;
+    const { projectId, path } = roomTarget(req);
     // 消えたページの部屋は作り直す
     if (!this.room || (this.room.gone && this.room.size === 0)) {
       this.room = this.makeRoom(projectId, path, new URL(req.url).origin);
