@@ -79,6 +79,12 @@ export class PageRoom {
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
+    // 新しい互換日付では、バイナリの受信が既定で Blob になる。ArrayBuffer で受け取る
+    try {
+      (server as unknown as { binaryType: string }).binaryType = "arraybuffer";
+    } catch {
+      /* 古いランタイムは常に ArrayBuffer */
+    }
     server.accept();
     const conn: Conn = {
       send: (d) => server.send(d),
@@ -86,11 +92,20 @@ export class PageRoom {
     };
     const queue: Uint8Array[] = [];
     let joined = false;
+    // 受信は順番どおりに処理する（Blob の読み出しが非同期のため）。例外で部屋ごと落ちないようにする
+    let chain = Promise.resolve();
     server.addEventListener("message", (e: MessageEvent) => {
-      if (typeof e.data === "string") return;
-      const data = new Uint8Array(e.data as ArrayBuffer);
-      if (joined) room.message(conn, data);
-      else queue.push(data);
+      chain = chain
+        .then(async () => {
+          const data = await toBytes(e.data);
+          if (!data) return;
+          if (joined) room.message(conn, data);
+          else queue.push(data);
+        })
+        .catch((err) => {
+          console.error("bad message", err);
+          server.close(1011, "bad message");
+        });
     });
     const leave = () => void room.leave(conn)?.catch((err) => console.error("flush on leave failed", err));
     server.addEventListener("close", leave);
@@ -98,7 +113,12 @@ export class PageRoom {
     room.join(conn).then(
       () => {
         joined = true;
-        for (const d of queue.splice(0)) room.message(conn, d);
+        try {
+          for (const d of queue.splice(0)) room.message(conn, d);
+        } catch (err) {
+          console.error("bad message", err);
+          server.close(1011, "bad message");
+        }
       },
       (err) => {
         console.error("join failed", err);
@@ -112,4 +132,13 @@ export class PageRoom {
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/** WebSocket の受信データをバイト列にする（ArrayBuffer / Blob / ビューのどれでも） */
+export async function toBytes(data: unknown): Promise<Uint8Array | null> {
+  if (typeof data === "string") return null;
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  if (typeof Blob !== "undefined" && data instanceof Blob) return new Uint8Array(await data.arrayBuffer());
+  return null;
 }

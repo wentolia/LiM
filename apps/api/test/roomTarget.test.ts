@@ -9,3 +9,14 @@ describe("roomTarget", () => {
     expect(roomTarget(forwarded)).toEqual({ projectId: "p1", path: "pages/会議メモ 2026.md" });
   });
 });
+
+describe("toBytes", () => {
+  it("Blob・ArrayBuffer・ビューのどれでも同じバイト列になり、文字列は無視する", async () => {
+    const { toBytes } = await import("../src/roomObject");
+    const bytes = new Uint8Array([0, 1, 2, 250]);
+    expect(await toBytes(bytes.buffer.slice(0))).toEqual(bytes);
+    expect(await toBytes(new Blob([bytes]))).toEqual(bytes);
+    expect(await toBytes(new Uint8Array([9, ...bytes]).subarray(1))).toEqual(bytes);
+    expect(await toBytes("hello")).toBeNull();
+  });
+});
