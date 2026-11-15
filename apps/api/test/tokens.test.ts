@@ -2,17 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { createApp, ownerAccessToken } from "../src/app";
 import type { Google } from "../src/google";
 import { D1Repo, type D1Database } from "../src/repo";
-import { BadTokenKey, isEncrypted, tokenCipher } from "../src/tokenCipher";
+import { isEncrypted, tokenCipher } from "../src/tokenCipher";
 import { freshD1 } from "./d1";
 import { migrate } from "../src/migrations";
 
 const KEY_A = btoa(String.fromCharCode(...new Uint8Array(32).fill(1)));
 const KEY_B = btoa(String.fromCharCode(...new Uint8Array(32).fill(2)));
-const cipher = async (k: string) => (await tokenCipher(k))!;
+const cipher = tokenCipher;
 const quiet = () => {
-  const w = vi.spyOn(console, "warn").mockImplementation(() => {});
   const e = vi.spyOn(console, "error").mockImplementation(() => {});
-  return () => { w.mockRestore(); e.mockRestore(); };
+  return () => e.mockRestore();
 };
 const rawRow = (d: D1Database) => d.prepare("SELECT * FROM drive_tokens WHERE user_id = 'u1'").first<Record<string, unknown>>();
 const google = (calls: string[]): Google => ({
@@ -42,11 +41,11 @@ describe("tokenCipher", () => {
     expect(await c.decrypt("1//plain", "drive_tokens:u1:refresh_token")).toBeNull();
   });
 
-  it("無い・32 バイトの base64 でなければ投げる。前後の空白は無視する", async () => {
-    for (const bad of [undefined, " \n", btoa("short"), "not base64 !!", `"${KEY_A}"`]) {
-      await expect(tokenCipher(bad)).rejects.toBeInstanceOf(BadTokenKey);
+  it("32 バイトの base64 でなければ投げる。前後の空白（貼り付けたときの改行）は同じ鍵として扱う", async () => {
+    for (const bad of ["", btoa("short"), "not base64 !!", `"${KEY_A}"`]) {
+      await expect(tokenCipher(bad)).rejects.toThrow("DRIVE_TOKEN_KEY）が正しくありません");
     }
-    expect(await tokenCipher(` ${KEY_A}\n`)).toBeTruthy();
+    expect(await tokenCipher(` ${KEY_A}\n`)).toBe(await tokenCipher(KEY_A));
   });
 });
 
@@ -69,6 +68,7 @@ describe("D1Repo のドライブの鍵（ローカルの D1）", { timeout: 20_0
     const restore = quiet();
     expect(await new D1Repo(d, await cipher(KEY_A)).getDriveToken("u1")).toBeNull();
     restore();
+    expect((await rawRow(d))!.refresh_token).toBe("1//rt"); // 行は消さない（接続し直せば上書きされる）
   });
 
   it("読めない行（別の鍵）は未接続と同じ扱いにし、接続し直せば読める", async () => {

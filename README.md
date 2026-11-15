@@ -45,7 +45,7 @@ Node.js 22 以上。
 ```sh
 npm install
 npm run dev        # http://localhost:5173（/api は :8787 へ中継）
-npx wrangler dev   # API（ローカル D1）。.dev.vars に GOOGLE_CLIENT_SECRET=... と DRIVE_TOKEN_KEY=... を書く
+npx wrangler dev   # API（ローカル D1）。.dev.vars に GOOGLE_CLIENT_SECRET=... と DRIVE_TOKEN_KEY=...（作り方は下の「設定」）を書く
 npm test           # core / web / api のテスト
 npm run build      # 型チェック + 本番ビルド（apps/web/dist）
 ```
@@ -80,5 +80,5 @@ npm run build      # 型チェック + 本番ビルド（apps/web/dist）
 |---|---|
 | Google Cloud：OAuth クライアント | 承認済みのリダイレクト URI：`https://sabakan.hakuwentolia.workers.dev/api/auth/callback`（ローカルは `http://localhost:8787/api/auth/callback`） |
 | Google Cloud：OAuth 同意画面 | スコープ `drive.file`。公開ステータスを「本番環境」にする（テスト中だと管理者の接続が 7 日で切れる） |
-| Cloudflare：変数とシークレット | `GOOGLE_CLIENT_SECRET`（シークレット）、`DRIVE_TOKEN_KEY`（シークレット。ドライブの鍵を暗号化する。作り方：ブラウザの開発者ツールで `btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))`。無い・形が違うときは 503 になる。なくしたら管理者がドライブを接続し直す。決定 0002） |
+| Cloudflare：変数とシークレット | `GOOGLE_CLIENT_SECRET`（シークレット）、`DRIVE_TOKEN_KEY`（シークレット。ドライブの鍵を暗号化する。作り方：ブラウザの開発者ツールで `btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))`。無い・形が違うときは 503 になる。なくしたら管理者がドライブを接続し直す。「未接続」と出たら、接続し直す前に登録した鍵が控えと同じか確かめる（違う鍵のまま接続し直すと、控えの鍵では読めなくなる）。決定 0002） |
 | wrangler.jsonc | `GOOGLE_CLIENT_ID`（公開値）、D1 `sabakan`（初回デプロイで自動作成） |

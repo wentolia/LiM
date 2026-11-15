@@ -83,9 +83,8 @@ export class D1Repo implements Repo {
     return { user_id: userId, refresh_token: refresh, access_token: access, expires_at: access ? row.expires_at : null };
   }
   async putDriveToken(t: DriveToken) {
-    const c = this.cipher;
-    const refresh = await c.encrypt(t.refresh_token, aad(t.user_id, "refresh_token"));
-    const access = t.access_token ? await c.encrypt(t.access_token, aad(t.user_id, "access_token")) : null;
+    const refresh = await this.cipher.encrypt(t.refresh_token, aad(t.user_id, "refresh_token"));
+    const access = t.access_token ? await this.cipher.encrypt(t.access_token, aad(t.user_id, "access_token")) : null;
     return this.run(
       "INSERT INTO drive_tokens (user_id, refresh_token, access_token, expires_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET refresh_token = excluded.refresh_token, access_token = excluded.access_token, expires_at = excluded.expires_at",
       t.user_id, refresh, access, t.expires_at,

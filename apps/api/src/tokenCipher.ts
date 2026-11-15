@@ -62,23 +62,18 @@ async function makeCipher(raw: Uint8Array<ArrayBuffer>): Promise<TokenCipher> {
 
 const cache = new Map<string, Promise<TokenCipher>>();
 
-/** DRIVE_TOKEN_KEY が無い・形が違う。サーバーは 503 を返す（決定 0002） */
+/** DRIVE_TOKEN_KEY の形が違う（貼り間違い）。サーバーは 503 を返す（決定 0002） */
 export class BadTokenKey extends Error {
-  constructor(missing: boolean) {
-    super(missing
-      ? "サーバーの設定（DRIVE_TOKEN_KEY）がまだです"
-      : "サーバーの設定（DRIVE_TOKEN_KEY）が正しくありません。32 バイトの乱数の base64 を登録してください");
-  }
+  constructor() { super("サーバーの設定（DRIVE_TOKEN_KEY）が正しくありません。32 バイトの乱数の base64 を登録してください"); }
 }
 
-/** シークレットから暗号器を作る（実行環境ごとに 1 回）。無い・32 バイトでなければ BadTokenKey を投げる */
-export async function tokenCipher(secret: string | undefined): Promise<TokenCipher> {
-  const id = secret?.trim() ?? "";
-  if (!id) throw new BadTokenKey(true);
+/** シークレットから暗号器を作る（実行環境ごとに 1 回）。32 バイトの base64 でなければ BadTokenKey を投げる */
+export async function tokenCipher(secret: string): Promise<TokenCipher> {
+  const id = secret.trim();
   let c = cache.get(id);
   if (!c) {
     const raw = keyBytes(id);
-    if (!raw) throw new BadTokenKey(false);
+    if (!raw) throw new BadTokenKey();
     cache.set(id, (c = makeCipher(raw)));
   }
   return c;

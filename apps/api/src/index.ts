@@ -28,6 +28,9 @@ export default {
     if (!env.GOOGLE_CLIENT_SECRET) {
       return Response.json({ error: "サーバーの設定（GOOGLE_CLIENT_SECRET）がまだです" }, { status: 503 });
     }
+    if (!env.DRIVE_TOKEN_KEY) {
+      return Response.json({ error: "サーバーの設定（DRIVE_TOKEN_KEY）がまだです" }, { status: 503 });
+    }
     let cipher: TokenCipher;
     try {
       cipher = await tokenCipher(env.DRIVE_TOKEN_KEY);
