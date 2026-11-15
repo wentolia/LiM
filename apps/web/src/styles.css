@@ -83,16 +83,37 @@ table.list .title { border: 0; background: transparent; padding: 0; color: var(-
 /* 接続状態 */
 .header .lamp.error { background: #ff8a7a; }
 .header .alert { background: #ff8a7a; color: var(--ink); font-weight: 700; }
-.header .logout { border: 0; border-left: 1px solid var(--band-rule); background: transparent; color: #fff; text-decoration: underline; }
-.header .logout:hover { background: var(--band-rule); }
+.header .link { border: 0; border-left: 1px solid var(--band-rule); background: transparent; color: #fff; text-decoration: underline; }
+.header .link:hover, .header .project:hover { background: var(--band-rule); }
+.header .project { border: 0; border-left: 1px solid var(--band-rule); background: transparent; color: #fff; font-weight: 700; }
 
 /* ログイン画面 */
-.login { flex: 1; background: var(--ground); display: flex; align-items: flex-start; justify-content: center; padding: 64px 16px; }
-.login-box { width: 100%; max-width: 420px; background: var(--paper); border: 1px solid var(--rule); padding: 24px; display: flex; flex-direction: column; gap: 12px; }
-.login-box h1 { margin: 0; font-size: 16px; border-bottom: 1px solid var(--ink); padding-bottom: 8px; }
-.login-box p { margin: 0; }
-.login-box .note { color: var(--muted); font-size: 12px; }
-.login-box .primary { height: 36px; border: 1px solid var(--band); background: var(--band); color: #fff; font-weight: 700; }
-.login-box .primary:disabled { opacity: .6; }
-.login-box .plain { border: 0; background: transparent; color: var(--link); text-decoration: underline; padding: 0; align-self: flex-start; }
-.login-box .error { color: var(--missing); font-weight: 700; }
+.sheet { flex: 1; background: var(--ground); display: flex; align-items: flex-start; justify-content: center; padding: 64px 16px; }
+.box { width: 100%; max-width: 420px; background: var(--paper); border: 1px solid var(--rule); padding: 24px; display: flex; flex-direction: column; gap: 12px; }
+.box h1 { margin: 0; font-size: 16px; border-bottom: 1px solid var(--ink); padding-bottom: 8px; }
+.box p { margin: 0; }
+.box .note { color: var(--muted); font-size: 12px; }
+.box .primary { height: 36px; border: 1px solid var(--band); background: var(--band); color: #fff; font-weight: 700; }
+.box .primary:disabled { opacity: .6; }
+.box .plain { border: 0; background: transparent; color: var(--link); text-decoration: underline; padding: 0; align-self: flex-start; }
+.box .error { color: var(--missing); font-weight: 700; }
+
+/* プロジェクト・メンバー */
+.toolbar .create { display: flex; }
+.toolbar .create input { border: 0; border-left: 1px solid var(--ink); padding: 0 10px; min-width: 240px; background: #fff; }
+.toolbar a.primary { display: flex; align-items: center; text-decoration: none; }
+.toolbar .primary:disabled { opacity: .6; }
+.notice { padding: 8px 16px; border-bottom: 1px solid var(--ink); background: #fff; }
+.notice.error { color: var(--missing); font-weight: 700; }
+.sheet .members { width: 100%; max-width: 720px; background: #fff; border-collapse: collapse; }
+.sheet:has(.members) { flex-direction: column; align-items: center; justify-content: flex-start; gap: 12px; padding: 24px 16px; }
+.members th, .members td { border: 1px solid var(--rule); padding: 6px 10px; text-align: left; }
+.members th { background: var(--ground); font-weight: 700; }
+.sheet > .note { max-width: 720px; color: var(--muted); font-size: 12px; margin: 0; }
+.plain { border: 0; background: transparent; color: var(--link); text-decoration: underline; padding: 0; }
+@media (max-width: 640px) {
+  .toolbar .create { flex: 1 1 100%; border-top: 1px solid var(--ink); }
+  .toolbar .create input { flex: 1; min-width: 0; border-left: 0; }
+  .toolbar .create .primary { flex: 0 0 auto; border-top: 0; }
+}
+.tile.project { height: 96px; }

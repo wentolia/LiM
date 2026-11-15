@@ -39,12 +39,22 @@ export class Workspace {
     const entries = await this.store.list("pages/");
     const graph = new LinkGraph();
     this.updated.clear();
-    for (const e of entries) {
-      if (!e.path.endsWith(".md")) continue;
-      const page = parsePage(e.path, dec.decode(await this.store.read(e.path)));
+    const md = entries.filter((e) => e.path.endsWith(".md"));
+    // 通信先が遠い（サーバー経由のドライブ）ので、6 件ずつ並行に読む
+    const texts: string[] = new Array(md.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < md.length) {
+        const i = next++;
+        texts[i] = dec.decode(await this.store.read(md[i].path));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, md.length) }, worker));
+    md.forEach((e, i) => {
+      const page = parsePage(e.path, texts[i]);
       graph.upsert(page);
       this.updated.set(normalizeTitle(page.title), e.updatedAt);
-    }
+    });
     this.graph = graph;
     this.emit();
   }

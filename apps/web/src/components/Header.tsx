@@ -1,46 +1,53 @@
 export type SaveState = "saved" | "saving" | "error";
 
-export interface Connection {
+interface Props {
   /** 保存先の表示名 */
   place: string;
-  /** ログイン中のユーザー表示（未ログインなら null） */
+  /** 開いているプロジェクト（押すとプロジェクト一覧へ） */
+  project?: { name: string; onSwitch: () => void; onMembers: () => void };
+  save?: SaveState;
+  pageCount?: number;
+  /** ログイン中のアカウント（未ログインなら null） */
   user: string | null;
-  onLogout?: () => void;
-}
-
-interface Props {
-  save: SaveState;
-  pageCount: number;
-  conn: Connection;
-  /** ブラウザ内モードからログインへ進む */
   onLogin?: () => void;
+  onLogout?: () => void;
   onHome: () => void;
 }
 
 const SAVE_LABEL: Record<SaveState, string> = { saved: "保存済み", saving: "保存中…", error: "保存できませんでした" };
 
 /** 接続情報だけを示すヘッダー */
-export function Header({ save, pageCount, conn, onLogin, onHome }: Props) {
+export function Header({ place, project, save, pageCount, user, onLogin, onLogout, onHome }: Props) {
   return (
     <header className="header">
       <button type="button" className="brand" onClick={onHome}>
         SABAKAN
       </button>
+      {project && (
+        <>
+          <button type="button" className="cell project" onClick={project.onSwitch} title="プロジェクトを切り替える">
+            {project.name} ▾
+          </button>
+          <button type="button" className="cell link" onClick={project.onMembers}>
+            メンバー
+          </button>
+        </>
+      )}
       <div className="info">
         <span className="cell">
-          <span className={`lamp ${save}`} aria-hidden="true" />
-          保存先 {conn.place}
+          <span className={`lamp ${save ?? "saved"}`} aria-hidden="true" />
+          保存先 {place}
         </span>
-        <span className={save === "error" ? "cell alert" : "cell"}>{SAVE_LABEL[save]}</span>
-        <span className="cell">{pageCount} ページ</span>
-        <span className="cell user">{conn.user ?? "未ログイン"}</span>
-        {conn.onLogout && (
-          <button type="button" className="cell logout" onClick={conn.onLogout}>
+        {save && <span className={save === "error" ? "cell alert" : "cell"}>{SAVE_LABEL[save]}</span>}
+        {pageCount !== undefined && <span className="cell">{pageCount} ページ</span>}
+        <span className="cell user">{user ?? "未ログイン"}</span>
+        {onLogout && (
+          <button type="button" className="cell link" onClick={onLogout}>
             ログアウト
           </button>
         )}
         {onLogin && (
-          <button type="button" className="cell logout" onClick={onLogin}>
+          <button type="button" className="cell link" onClick={onLogin}>
             ログイン
           </button>
         )}

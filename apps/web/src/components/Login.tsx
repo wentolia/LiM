@@ -1,33 +1,29 @@
+import { Header } from "./Header";
+
 interface Props {
-  busy: boolean;
   error: string | null;
-  /** 前回ログインしたアカウント（あれば） */
-  lastUser: string | null;
+  /** サーバーが使えないとき（ローカル開発など）は Google ログインを出さない */
+  serverReady: boolean;
   onLogin: () => void;
   onLocal: () => void;
 }
 
-/** ログイン画面：Google ドライブにつなぐか、このブラウザだけで使うかを選ぶ */
-export function Login({ busy, error, lastUser, onLogin, onLocal }: Props) {
+/** ログイン画面：Google でログインするか、このブラウザだけで使うかを選ぶ */
+export function Login({ error, serverReady, onLogin, onLocal }: Props) {
   return (
     <div className="app">
-      <header className="header">
-        <span className="brand">SABAKAN</span>
-        <div className="info">
-          <span className="cell">保存先 未接続</span>
-          <span className="cell user">未ログイン</span>
-        </div>
-      </header>
-      <main className="login">
-        <section className="login-box">
+      <Header place="未接続" user={null} onHome={() => {}} />
+      <main className="sheet">
+        <section className="box">
           <h1>ログイン</h1>
-          <p>ページは Google ドライブの「マイドライブ / SABAKAN」フォルダに、Markdown ファイルとして保存されます。</p>
-          <p className="note">SABAKAN が作ったファイル以外は読み書きしません。</p>
-          <button type="button" className="primary" onClick={onLogin} disabled={busy}>
-            {busy ? "接続中…" : lastUser ? `${lastUser} で続ける` : "Google でログイン"}
+          <p>Google アカウントでログインすると、招待されたプロジェクトのページを読み書きできます。</p>
+          <p className="note">ページはプロジェクト管理者の Google ドライブに、Markdown ファイルとして保存されます。</p>
+          <button type="button" className="primary" onClick={onLogin} disabled={!serverReady}>
+            Google でログイン
           </button>
+          {!serverReady && <p className="error">サーバーにつながらないため、ログインできません。</p>}
           {error && <p className="error">{error}</p>}
-          <button type="button" className="plain" onClick={onLocal} disabled={busy}>
+          <button type="button" className="plain" onClick={onLocal}>
             ログインせずにこのブラウザだけで使う
           </button>
         </section>
