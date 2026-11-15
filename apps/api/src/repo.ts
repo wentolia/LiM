@@ -1,4 +1,6 @@
-/* メンバー表の読み書き。D1 実装とテスト用のメモリ実装を同じ I/F で持つ */
+/* メンバー表の読み書き。D1 実装とテスト用のメモリ実装を同じ I/F で持つ。表の定義は migrations.ts */
+import { migrate, type D1Database, type D1Stmt } from "./migrations";
+export type { D1Database } from "./migrations";
 
 export interface User { id: string; email: string; name: string }
 export interface Project { id: string; name: string; owner_id: string; folder_id: string; created_at: string }
@@ -27,43 +29,26 @@ export interface Repo {
   removeMember(projectId: string, email: string): Promise<void>;
 }
 
-export const SCHEMA = [
-  "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, name TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS drive_tokens (user_id TEXT PRIMARY KEY, refresh_token TEXT NOT NULL, access_token TEXT, expires_at INTEGER)",
-  "CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, owner_id TEXT NOT NULL, folder_id TEXT NOT NULL, created_at TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS members (project_id TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL, added_at TEXT NOT NULL, PRIMARY KEY (project_id, email))",
-];
 
-/* D1 の必要最小限の型（@cloudflare/workers-types を入れずに済ませる） */
-interface D1Stmt {
-  bind(...v: unknown[]): D1Stmt;
-  first<T>(): Promise<T | null>;
-  all<T>(): Promise<{ results: T[] }>;
-  run(): Promise<unknown>;
-}
-export interface D1Database {
-  prepare(sql: string): D1Stmt;
-  batch(stmts: D1Stmt[]): Promise<unknown>;
-}
-
-let schemaReady: Promise<unknown> | null = null;
+const ready = new WeakMap<D1Database, Promise<void>>();
 
 export class D1Repo implements Repo {
-
   constructor(private db: D1Database) {}
 
   private q(sql: string, ...v: unknown[]): D1Stmt {
     return this.db.prepare(sql).bind(...v);
   }
-  /** 初回だけテーブルを作る */
-  private init(): Promise<unknown> {
-    // テーブル作成は同じ実行環境（isolate）で 1 回だけ
-    schemaReady ??= this.db.batch(SCHEMA.map((s) => this.db.prepare(s))).catch((e) => {
-      schemaReady = null;
-      throw e;
-    });
-    return schemaReady;
+  /** 未適用の migration を当てる（同じ実行環境（isolate）で 1 回だけ） */
+  private init(): Promise<void> {
+    let p = ready.get(this.db);
+    if (!p) {
+      p = migrate(this.db).catch((e) => {
+        ready.delete(this.db); // 次のリクエストでやり直す
+        throw e;
+      });
+      ready.set(this.db, p);
+    }
+    return p;
   }
   private async first<T>(sql: string, ...v: unknown[]) { await this.init(); return this.q(sql, ...v).first<T>(); }
   private async all<T>(sql: string, ...v: unknown[]) { await this.init(); return (await this.q(sql, ...v).all<T>()).results; }

@@ -1,0 +1,6 @@
+// テスト用：ローカルの D1（wrangler の getPlatformProxy）だけを使う設定
+{
+  "name": "sabakan-test",
+  "compatibility_date": "2026-06-01",
+  "d1_databases": [{ "binding": "DB", "database_name": "test", "database_id": "test" }]
+}
