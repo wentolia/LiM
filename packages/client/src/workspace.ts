@@ -1,4 +1,4 @@
-import { ConflictError, LinkGraph, merge3, normalizeTitle, parsePage, renameLinks, serializePage, type Page, type Store, type StoreEntry } from "@lim/core";
+import { ConflictError, LinkGraph, merge3, pathOf, sanitizeTitle, normalizeTitle, parsePage, renameLinks, renamePropLinks, serializePage, type Page, type Store, type StoreEntry } from "@lim/core";
 
 /** 一覧と本文をまとめて返せる保存先 */
 export interface BulkLoader {
@@ -13,12 +13,7 @@ export interface PageItem {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-/** ファイル名に使えない文字を置き換える */
-export function sanitizeTitle(title: string): string {
-  return title.replace(/[\\/:*?"<>|]/g, "－").replace(/\s+/g, " ").trim();
-}
-
-export const pathOf = (title: string) => `pages/${sanitizeTitle(title)}.md`;
+export { pathOf, sanitizeTitle };
 
 /**
  * 全ページを 1 つの箱として扱う作業領域。
@@ -104,8 +99,9 @@ export class Workspace {
    * 保存する。他の人が先に保存していたら（楽観ロック失敗）、最新を読み直して
    * 3-way マージした結果を保存し直す。どちらの変更も消さない。
    */
-  private async put(title: string, props: Record<string, unknown>, body: string): Promise<Page> {
-    const path = pathOf(title);
+  private async put(title: string, props: Record<string, unknown>, body: string, at?: string): Promise<Page> {
+    // 既存ページは実際のパスに書く（題名の決まりより前に作られたファイル名でも二重にしない）
+    const path = at ?? this.get(title)?.path ?? pathOf(title);
     let text = serializePage(props, body);
     this.saving.add(path);
     try {
@@ -201,16 +197,40 @@ export class Workspace {
       throw new Error(`「${next}」という名前のページはすでにあります`);
     }
     const referrers = this.graph.linksTo(page.title).filter((p) => p.title !== page.title);
-    await this.put(next, page.props, page.body);
-    await this.store.remove(page.path);
-    this.revs.delete(page.path);
-    this.bases.delete(page.path);
-    this.graph.remove(page.title);
-    this.updated.delete(normalizeTitle(page.title));
-    // 大文字小文字だけの改名では put が同じキーを上書きしているので、消した分を戻す
-    if (!this.exists(next)) await this.put(next, page.props, page.body);
+    if (this.store.rename) {
+      // 保存先の「名前の変更」を使う（ドライブの版履歴とファイル ID が残り、途中で失敗しても二重や欠落が出ない）
+      const to = pathOf(next);
+      let entry: StoreEntry;
+      try {
+        entry = await this.store.rename(page.path, to);
+      } catch (e) {
+        if (e instanceof ConflictError) throw new Error(`「${next}」という名前のページはすでにあります`);
+        throw e;
+      }
+      const base = this.bases.get(page.path);
+      this.revs.delete(page.path);
+      this.bases.delete(page.path);
+      this.graph.remove(page.title);
+      this.updated.delete(normalizeTitle(page.title));
+      this.revs.set(to, entry.revision);
+      if (base !== undefined) this.bases.set(to, base);
+      const text = serializePage(page.props, page.body);
+      this.graph.upsert(parsePage(to, text));
+      this.updated.set(normalizeTitle(next), entry.updatedAt);
+      // 共同編集の部屋がまだ書き出していない分（手元の索引には入っている）を新しいファイルに書く
+      if (base !== undefined && text !== base) await this.put(next, page.props, page.body, to);
+    } else {
+      await this.put(next, page.props, page.body, pathOf(next));
+      await this.store.remove(page.path);
+      this.revs.delete(page.path);
+      this.bases.delete(page.path);
+      this.graph.remove(page.title);
+      this.updated.delete(normalizeTitle(page.title));
+      // 大文字小文字だけの改名では put が同じキーを上書きしているので、消した分を戻す
+      if (!this.exists(next)) await this.put(next, page.props, page.body, pathOf(next));
+    }
     for (const r of referrers) {
-      await this.put(r.title, r.props, renameLinks(r.body, page.title, next));
+      await this.put(r.title, renamePropLinks(r.props, page.title, next), renameLinks(r.body, page.title, next));
     }
     this.emit();
     return next;

@@ -1,4 +1,4 @@
-import { ConflictError, DriveStore, type Store, type StoreEntry } from "@lim/core";
+import { ConflictError, DriveStore, pathOf, type Store, type StoreEntry } from "@lim/core";
 import { decodeIdToken, DRIVE_SCOPE, type Google } from "./google";
 import type { Project, Repo, Role, User } from "./repo";
 
@@ -328,6 +328,24 @@ export function createApp(deps: Deps) {
         return json(await (await projectStore(project)).write(path, data, contentTypeOf(path), ifMatch === null ? undefined : { ifRevision: ifMatch }));
       } catch (e) {
         if (e instanceof ConflictError) return json({ error: e.message, current: e.current }, 409);
+        throw e;
+      }
+    }],
+    ["PATCH", /^\/api\/projects\/(\w+)\/file$/, async (req, m, url) => {
+      // 改名（同じフォルダの中だけ）。ドライブの版履歴とファイル ID を保つ
+      const { project } = await access(req, m[1]);
+      const path = url.searchParams.get("path");
+      const to = url.searchParams.get("to");
+      const isPage = (x: string | null): x is string => validPath(x) && x.startsWith("pages/") && x.endsWith(".md");
+      if (!isPage(path) || !isPage(to)) throw new HttpError(400, "bad path");
+      // 行き先は題名の決まり（NFC・80 文字・使えない文字なし）に沿っていること
+      if (to !== pathOf(to.slice("pages/".length, -".md".length))) throw new HttpError(400, "その名前は使えません");
+      const store = await projectStore(project);
+      if (!store.rename) throw new HttpError(501, "この保存先は改名に対応していません");
+      try {
+        return json(await store.rename(path, to));
+      } catch (e) {
+        if (e instanceof ConflictError) return json({ error: "その名前のページはすでにあります", current: e.current }, 409);
         throw e;
       }
     }],

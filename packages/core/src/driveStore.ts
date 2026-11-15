@@ -1,4 +1,4 @@
-import { checkRevision, type Store, type StoreEntry, type WriteOptions } from "./store.js";
+import { checkRevision, ConflictError, type Store, type StoreEntry, type WriteOptions } from "./store.js";
 
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
@@ -123,9 +123,9 @@ export class DriveStore implements Store {
   private async idOf(path: string): Promise<string | undefined> {
     if (this.ids.has(path)) return this.ids.get(path);
     const [dir, name] = this.split(path);
-    const found = await this.search(`name = '${this.esc(name)}' and '${await this.folder(dir)}' in parents and trashed = false`);
-    if (found[0]) this.entry(path, found[0]);
-    return found[0]?.id;
+    const found = await this.byName(dir, name);
+    if (found) this.entry(path, found);
+    return found?.id;
   }
 
   /** 一覧と中身をまとめて読む（並行数 limit）。list で得た ID を使うので、1 ファイル 1 往復で済む */
@@ -154,8 +154,14 @@ export class DriveStore implements Store {
   /** 1 ファイルの現在の状態（無ければ null）。キャッシュを使わず毎回問い合わせる */
   async stat(path: string): Promise<StoreEntry | null> {
     const [dir, name] = this.split(path);
+    const found = await this.byName(dir, name);
+    return found ? this.entry(path, found) : null;
+  }
+
+  /** フォルダ内の、名前が完全に一致するファイル（ドライブの検索が大文字小文字や正規化を同一視しても取り違えない） */
+  private async byName(dir: string, name: string): Promise<DriveFile | undefined> {
     const found = await this.search(`name = '${this.esc(name)}' and '${await this.folder(dir)}' in parents and trashed = false`);
-    return found[0] ? this.entry(path, found[0]) : null;
+    return found.find((f) => f.name === name);
   }
 
   async write(path: string, data: Uint8Array, contentType = "text/markdown", opts?: WriteOptions): Promise<StoreEntry> {
@@ -192,6 +198,26 @@ export class DriveStore implements Store {
       body: JSON.stringify({ trashed: true }),
     });
     this.ids.delete(path);
+  }
+
+  /** 同じフォルダの中で名前を変える。ファイル ID と版履歴はそのまま残る */
+  async rename(from: string, to: string): Promise<StoreEntry> {
+    const [fromDir] = this.split(from);
+    const [toDir, toName] = this.split(to);
+    if (fromDir !== toDir) throw new Error("フォルダをまたぐ改名はできません");
+    // 覚えている ID は使わず引き直す（別の経路で先に改名されていたら、古い名前のまま動かさない）
+    const src = await this.stat(from);
+    if (!src) throw new ConflictError(from, "");
+    const id = this.ids.get(from)!;
+    const other = await this.stat(to);
+    if (other && this.ids.get(to) !== id) throw new ConflictError(to, other.revision);
+    const f = await this.json<DriveFile>(`${API}/files/${id}?fields=${FIELDS}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: toName }),
+    });
+    this.ids.delete(from);
+    return this.entry(to, f);
   }
 
   async changes() {

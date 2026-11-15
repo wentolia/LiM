@@ -8,6 +8,11 @@ export interface Store {
   /** opts.ifRevision を渡すと、保存先の revision が違うとき ConflictError を投げる（楽観ロック） */
   write(path: string, data: Uint8Array, contentType?: string, opts?: WriteOptions): Promise<StoreEntry>;
   remove(path: string): Promise<void>;
+  /**
+   * 同じフォルダの中で名前を変える（版履歴とファイル ID を保つ）。対応しない保存先は持たなくてよい。
+   * 移動先に別のファイルがあるときは ConflictError を投げる（大文字小文字だけの改名は可）
+   */
+  rename?(from: string, to: string): Promise<StoreEntry>;
   /** 前回の cursor 以降の変更（索引の差分更新用） */
   changes(cursor?: string): Promise<{ changed: StoreEntry[]; removed: string[]; cursor: string }>;
 }
@@ -71,6 +76,18 @@ export class MemoryStore implements Store {
   async remove(path: string): Promise<void> {
     this.files.delete(path);
     this.log.push({ path, removed: true });
+  }
+
+  async rename(from: string, to: string): Promise<StoreEntry> {
+    const f = this.files.get(from);
+    if (!f) throw new Error(`not found: ${from}`);
+    const other = this.files.get(to);
+    if (other && to !== from) throw new ConflictError(to, other.entry.revision);
+    const entry: StoreEntry = { ...f.entry, path: to, revision: String(Number(f.entry.revision) + 1), updatedAt: new Date().toISOString() };
+    this.files.delete(from);
+    this.files.set(to, { data: f.data, entry });
+    this.log.push({ path: from, removed: true }, { path: to, removed: false });
+    return entry;
   }
 
   async changes(cursor = "0") {

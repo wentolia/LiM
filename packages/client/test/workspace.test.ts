@@ -40,6 +40,42 @@ describe("Workspace", () => {
     await expect(ws.rename("A", "B")).rejects.toThrow("すでにあります");
   });
 
+  it("改名は保存先の「名前の変更」を使い、props の [[旧名]] も書き換える", async () => {
+    const { store, ws } = await setup();
+    await store.write("pages/C.md", enc.encode('---\n参考: "[[KJ法]]"\n---\n本文'));
+    await ws.load();
+    const before = (await store.list("pages/")).find((e) => e.path === "pages/KJ法.md")!.revision;
+    await ws.rename("KJ法", "KJ法2");
+    // 中身はそのまま、版は続き番号（新規作成ではない）
+    expect(dec.decode(await store.read("pages/KJ法2.md"))).toBe("カード");
+    expect(Number((await store.list("pages/")).find((e) => e.path === "pages/KJ法2.md")!.revision)).toBe(Number(before) + 1);
+    expect(dec.decode(await store.read("pages/C.md"))).toContain('参考: "[[KJ法2]]"');
+  });
+
+  it("改名の時点で保存先にまだ無い手元の変更（共同編集の書き出し前）も、新しいファイルに書く", async () => {
+    const { store, ws } = await setup();
+    ws.applyLocal("KJ法", "カード＋追記");
+    await ws.rename("KJ法", "KJ法2");
+    expect(dec.decode(await store.read("pages/KJ法2.md"))).toBe("カード＋追記");
+  });
+
+  it("題名の決まりより前に作られたファイル名（NFD など）でも、保存は元のファイルに書く", async () => {
+    const store = new MemoryStore();
+    const nfd = "が".normalize("NFD");
+    await store.write(`pages/${nfd}.md`, enc.encode("古い"));
+    const ws = new Workspace(store);
+    await ws.load();
+    await ws.saveBody(nfd, "新しい");
+    expect((await store.list("pages/")).map((e) => e.path)).toEqual([`pages/${nfd}.md`]);
+    expect(dec.decode(await store.read(`pages/${nfd}.md`))).toBe("新しい");
+  });
+
+  it("題名は NFC にそろえ、ファイル名に使えない形を直し、80 文字までにする", () => {
+    expect(sanitizeTitle("か\u3099")).toBe("が");
+    expect(sanitizeTitle("..隠し. ")).toBe("隠し");
+    expect([...sanitizeTitle("あ".repeat(100))].length).toBe(80);
+  });
+
   it("関連ページ：同じリンク先を持つページをリンク名ごとに返す", async () => {
     const { ws } = await setup();
     const rel = ws.related("A");
