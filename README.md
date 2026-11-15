@@ -60,5 +60,5 @@ npm run build      # 型チェック + 本番ビルド（apps/web/dist）
 1. Google Cloud Console でプロジェクトを作成し、**Google Drive API** を有効化
 2. OAuth 同意画面：外部 / アプリ名 SABAKAN / スコープ `.../auth/drive.file` / テストユーザーに自分を追加
 3. 認証情報 → OAuth クライアント ID（ウェブアプリケーション）
-   - 承認済みの JavaScript 生成元：`https://lim.hakuwentolia.workers.dev`、`http://localhost:5173`（プレビュー URL も使うなら追加）
+   - 承認済みの JavaScript 生成元：`https://sabakan.hakuwentolia.workers.dev`、`http://localhost:5173`（プレビュー URL も使うなら追加）
 4. クライアント ID を Cloudflare の **ビルド変数** `VITE_GOOGLE_CLIENT_ID` に設定（ローカルは `apps/web/.env.local`）
