@@ -1,0 +1,11 @@
+// Cloudflare Workers（静的アセット配信）の設定。
+// ダッシュボードの「Root directory」は空欄（リポジトリ直下）、Build command は npm run build。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lim",
+  "compatibility_date": "2026-06-01",
+  "assets": {
+    "directory": "./apps/web/dist",
+    "not_found_handling": "single-page-application"
+  }
+}
