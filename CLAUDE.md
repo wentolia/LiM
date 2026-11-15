@@ -18,15 +18,15 @@ SABAKAN（旧称 LiM）で作業する Claude 向けの決まり。概要・開�
 | --- | --- | --- | --- |
 | エンジン | `packages/core` | Page の解析・書き出し、Query、リンクグラフ、Store I/F、3-way マージ、Y.Doc の形と書き込み操作（`ydoc.ts`）。予定：型の検証、View の結果データ | 純粋な TypeScript、`yaml`、`yjs` |
 | サーバー | `apps/api` | ログイン、プロジェクトとメンバー（D1）、ページの部屋（Durable Object）、ドライブ。予定：外部向け API | core、Cloudflare、Yjs 関連 |
-| クライアント | `packages/client`（予定。今は `apps/web/src` の `workspace.ts` / `collab.ts` / `api.ts` / `session.ts`） | 接続、ログイン状態、Workspace、フック | core、React（フックのみ）、Yjs 関連 |
-| デザインシステム | `packages/ui`（予定。今は `apps/web/src/styles.css`） | デザイントークン（CSS 変数）と部品。データや通信は扱わない | React、CSS |
+| クライアント | `packages/client` | 接続、ログイン状態、Workspace、フック | core、React（フックのみ）、Yjs 関連 |
+| デザインシステム | `packages/ui`（`tokens.css` と部品） | デザイントークン（CSS 変数）と部品。データや通信は扱わない | React、CSS |
 | アプリ | `apps/web` | 画面と、View の描き方 | core、client、ui（`apps/api` は import しない。HTTP / WebSocket だけ） |
 
 - 「予定」と書いたものはまだ無い。関係する作業のときにだけ作り、ついでの大移動はしない
 - `DriveStore` は今 core にあるが、ドライブ専用なので `apps/api` へ移す予定
 - `packages/core` から React・DOM・Cloudflare を import しない
 - View は「何をどう並べるか」のデータを core が返し、見た目は `apps/web` が描く
-- 色・文字・余白は部品に直接書かず、トークンを使う。機能ごとに `apps/web/src/features/<機能名>/` にまとめ、機能同士は直接 import しない（新しく書くコードから。既存はその画面を触るときに直す）
+- 色・文字・余白は部品に直接書かず、トークンを使う。機能ごとに `apps/web/src/features/<機能名>/` にまとめ（今の画面は `apps/web/src/screens/`）、機能同士は直接 import しない（新しく書くコードから。既存はその画面を触るときに直す）
 - 層をまたぐファイルの移動は、動きを変えない移動だけの PR にする。機能の追加と混ぜない
 
 ## 書き込みの経路
