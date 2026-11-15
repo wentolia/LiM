@@ -1,15 +1,19 @@
-import { useState } from "react";
-import { Header, type SaveState } from "./components/Header";
 import { ListView } from "./components/ListView";
 import { PageView } from "./components/PageView";
-import { useRoute, useWorkspace } from "./useWorkspace";
-import type { Session } from "./session";
+import type { SaveState } from "./components/Header";
+import { useWorkspace } from "./useWorkspace";
+import type { Workspace } from "./workspace";
 
-export function App({ session, onLogin }: { session: Session; onLogin?: () => void }) {
-  const { ws } = session;
+interface Props {
+  ws: Workspace;
+  title: string | null;
+  go: (title: string | null) => void;
+  setSaving: (s: SaveState) => void;
+}
+
+/** 1 つの箱（プロジェクト or ブラウザ内）のページ一覧とページ */
+export function Pages({ ws, title, go, setSaving }: Props) {
   useWorkspace(ws);
-  const [title, go] = useRoute();
-  const [saving, setSaving] = useState<SaveState>("saved");
   const items = ws.list();
 
   const open = async (t: string) => {
@@ -17,28 +21,9 @@ export function App({ session, onLogin }: { session: Session; onLogin?: () => vo
     go(ws.get(t)?.title ?? t);
   };
 
-  return (
-    <div className="app">
-      <Header
-        save={saving}
-        pageCount={items.length}
-        conn={session.conn}
-        onLogin={session.conn.user ? undefined : onLogin}
-        onHome={() => go(null)}
-      />
-      {title === null ? (
-        <ListView items={items} onOpen={open} onCreate={async () => go(await ws.create())} />
-      ) : (
-        <PageView
-          key={title}
-          ws={ws}
-          title={title}
-          onOpen={open}
-          onRenamed={(t) => go(t)}
-          onBack={() => go(null)}
-          setSaving={setSaving}
-        />
-      )}
-    </div>
+  return title === null ? (
+    <ListView items={items} onOpen={open} onCreate={async () => go(await ws.create())} />
+  ) : (
+    <PageView key={title} ws={ws} title={title} onOpen={open} onRenamed={(t) => go(t)} onBack={() => go(null)} setSaving={setSaving} />
   );
 }

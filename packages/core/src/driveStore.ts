@@ -1,4 +1,4 @@
-import type { Store, StoreEntry } from "@lim/core";
+import type { Store, StoreEntry } from "./store.js";
 
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
@@ -16,18 +16,22 @@ interface DriveFile {
 
 export type Fetch = typeof fetch;
 
+/** ルートフォルダの指定：名前ならマイドライブ直下に探す（無ければ作る）、id ならそのフォルダ */
+export type DriveRoot = string | { id: string };
+
 /**
- * Google ドライブ上の「マイドライブ/SABAKAN/」をワークスペースとする Store 実装。
- * パス "pages/x.md" はフォルダ SABAKAN/pages/ 内のファイル x.md に対応する。
+ * Google ドライブ上のフォルダをワークスペースとする Store 実装。
+ * パス "pages/x.md" はルート直下のフォルダ pages/ 内のファイル x.md に対応する。
  * スコープは drive.file なので、SABAKAN が作ったファイルだけが見える。
+ * ブラウザでも Cloudflare Workers でも動く（fetch / Blob / FormData のみ使用）。
  */
 export class DriveStore implements Store {
-  private folders = new Map<string, string>(); // "" → SABAKAN, "pages" → SABAKAN/pages
+  private folders = new Map<string, string>(); // "" → ルート, "pages" → ルート/pages
   private ids = new Map<string, string>(); // path → fileId
 
   constructor(
     private getToken: () => Promise<string>,
-    private rootName = "SABAKAN",
+    private root: DriveRoot = "SABAKAN",
     private fetcher: Fetch = (...a) => fetch(...a),
     private onAuthError: () => void = () => {},
   ) {}
@@ -71,11 +75,15 @@ export class DriveStore implements Store {
   }
 
   /** フォルダ ID を返す。無ければ作る。dir は "" か "pages" のような1階層 */
-  private async folder(dir: string): Promise<string> {
+  async folder(dir: string): Promise<string> {
     const cached = this.folders.get(dir);
     if (cached) return cached;
+    if (dir === "" && typeof this.root !== "string") {
+      this.folders.set("", this.root.id);
+      return this.root.id;
+    }
     const parent = dir === "" ? "root" : await this.folder("");
-    const name = dir === "" ? this.rootName : dir;
+    const name = dir === "" ? (this.root as string) : dir;
     const found = await this.search(
       `name = '${this.esc(name)}' and mimeType = '${FOLDER}' and '${parent}' in parents and trashed = false`,
     );
@@ -160,6 +168,24 @@ export class DriveStore implements Store {
 
   async changes() {
     return { changed: await this.list("pages/"), removed: [], cursor: String(Date.now()) };
+  }
+
+  /** ルート直下に新しいフォルダを作って ID を返す（同名があっても新規に作る） */
+  async createFolder(name: string): Promise<string> {
+    const created = await this.json<DriveFile>(`${API}/files?fields=${FIELDS}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, mimeType: FOLDER, parents: [await this.folder("")] }),
+    });
+    return created.id;
+  }
+
+  /** ルート直下に同名フォルダがあれば ID を返す */
+  async findFolder(name: string): Promise<string | undefined> {
+    const found = await this.search(
+      `name = '${this.esc(name)}' and mimeType = '${FOLDER}' and '${await this.folder("")}' in parents and trashed = false`,
+    );
+    return found[0]?.id;
   }
 
   /** ログイン中のユーザー（表示用） */

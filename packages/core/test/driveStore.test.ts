@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MemoryStore } from "@lim/core";
-import { DriveStore } from "../src/store/driveStore";
-import { copyIfEmpty } from "../src/session";
+import { DriveStore } from "../src/driveStore";
 
 /** Drive API v3 の必要最小限を模したフェイク */
 function fakeDrive() {
@@ -104,15 +102,15 @@ describe("DriveStore", () => {
     expect(await s.user()).toEqual({ name: "W", email: "w@example.com" });
     expect(invalidated).toBe(1);
   });
-});
 
-describe("copyIfEmpty", () => {
-  it("空の保存先にだけページを写す", async () => {
-    const from = new MemoryStore();
-    await from.write("pages/a.md", enc.encode("A"));
-    const to = new MemoryStore();
-    expect(await copyIfEmpty(from, to)).toBe(1);
-    expect(await copyIfEmpty(from, to)).toBe(0);
-    expect(dec.decode(await to.read("pages/a.md"))).toBe("A");
+  it("id 指定のルートを使い、サブフォルダを作れる", async () => {
+    const d = fakeDrive();
+    const top = new DriveStore(async () => "tok", "SABAKAN", d.fetcher);
+    const projectId = await top.createFolder("企画");
+    const s = new DriveStore(async () => "tok", { id: projectId }, d.fetcher);
+    await s.write("pages/a.md", enc.encode("x"));
+    const pages = [...d.files.values()].find((f) => f.name === "pages")!;
+    expect(pages.parents).toEqual([projectId]);
+    expect(await top.findFolder("企画")).toBe(projectId);
   });
 });
