@@ -29,6 +29,7 @@ button { cursor: pointer; }
 .header .cell { padding: 0 12px; border-left: 1px solid var(--band-rule); display: flex; align-items: center; gap: 6px; min-height: 32px; }
 .header .lamp { width: 8px; height: 8px; background: var(--lamp); }
 .header .lamp.saving { background: var(--select); }
+.header .lamp.offline { background: #ff8a7a; }
 .header .user { background: #fff; color: var(--ink); font-weight: 700; }
 
 /* ツールバー */
@@ -117,3 +118,4 @@ table.list .title { border: 0; background: transparent; padding: 0; color: var(-
   .toolbar .create .primary { flex: 0 0 auto; border-top: 0; }
 }
 .tile.project { height: 96px; }
+.page > .note { color: var(--muted); font-size: 12px; }
