@@ -1,4 +1,4 @@
-import { checkRevision, type Store, type StoreEntry, type WriteOptions } from "./store.js";
+import { checkRevision, ConflictError, type Store, type StoreEntry, type WriteOptions } from "./store.js";
 
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
@@ -192,6 +192,25 @@ export class DriveStore implements Store {
       body: JSON.stringify({ trashed: true }),
     });
     this.ids.delete(path);
+  }
+
+  /** 同じフォルダの中で名前を変える。ファイル ID と版履歴はそのまま残る */
+  async rename(from: string, to: string): Promise<StoreEntry> {
+    const [fromDir] = this.split(from);
+    const [toDir, toName] = this.split(to);
+    if (fromDir !== toDir) throw new Error("フォルダをまたぐ改名はできません");
+    const id = await this.idOf(from);
+    if (!id) throw new Error(`not found: ${from}`);
+    const other = await this.stat(to);
+    // stat が from と同じファイルを見つけたら（大文字小文字だけの改名）そのまま進める
+    if (other && this.ids.get(to) !== id) throw new ConflictError(to, other.revision);
+    const f = await this.json<DriveFile>(`${API}/files/${id}?fields=${FIELDS}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: toName }),
+    });
+    this.ids.delete(from);
+    return this.entry(to, f);
   }
 
   async changes() {

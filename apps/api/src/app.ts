@@ -331,6 +331,22 @@ export function createApp(deps: Deps) {
         throw e;
       }
     }],
+    ["PATCH", /^\/api\/projects\/(\w+)\/file$/, async (req, m, url) => {
+      // 改名（同じフォルダの中だけ）。ドライブの版履歴とファイル ID を保つ
+      const { project } = await access(req, m[1]);
+      const path = url.searchParams.get("path");
+      const to = url.searchParams.get("to");
+      const isPage = (x: string | null): x is string => validPath(x) && x.startsWith("pages/") && x.endsWith(".md");
+      if (!isPage(path) || !isPage(to)) throw new HttpError(400, "bad path");
+      const store = await projectStore(project);
+      if (!store.rename) throw new HttpError(501, "この保存先は改名に対応していません");
+      try {
+        return json(await store.rename(path, to));
+      } catch (e) {
+        if (e instanceof ConflictError) return json({ error: "その名前のページはすでにあります", current: e.current }, 409);
+        throw e;
+      }
+    }],
     ["DELETE", /^\/api\/projects\/(\w+)\/file$/, async (req, m, url) => {
       const { project } = await access(req, m[1]);
       const path = url.searchParams.get("path");

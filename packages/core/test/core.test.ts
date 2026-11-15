@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LinkGraph, MemoryStore, extractQueries, parsePage, parseQuery, runQuery } from "../src/index.js";
+import { LinkGraph, MemoryStore, extractQueries, normalizeTitle, parsePage, parseQuery, renamePropLinks, runQuery, serializePage } from "../src/index.js";
 
 const book = (title: string, props: string, body = "") =>
   parsePage(`pages/${title}.md`, `---\n${props}\n---\n# ${title}\n${body}`);
@@ -138,5 +138,52 @@ describe("楽観ロック", () => {
     const e = await s.write("pages/a.md", new Uint8Array([1]), undefined, { ifRevision: "" });
     await expect(s.write("pages/a.md", new Uint8Array([2]), undefined, { ifRevision: "" })).rejects.toBeInstanceOf(ConflictError);
     await s.write("pages/a.md", new Uint8Array([2]), undefined, { ifRevision: e.revision });
+  });
+});
+
+describe("データ構造の簡素化（0003）", () => {
+  it("frontmatter が読めなくても例外にせず、全文を本文として扱う", () => {
+    const text = "---\na: 1\na: 2\n---\n本文 [[リンク]]";
+    const p = parsePage("pages/壊れ.md", text);
+    expect(p.invalidFrontmatter).toBe(true);
+    expect(p.props).toEqual({});
+    expect(p.body).toBe(text);
+    expect(p.links).toEqual(["リンク"]);
+    // 書き戻しても中身は変わらない
+    expect(serializePage(p.props, p.body)).toBe(text);
+  });
+
+  it("引用符なしの author: [[山田]] もリンクとして読む。tags: [設計] はリンクにしない", () => {
+    const p = parsePage("pages/x.md", "---\nauthor: [[山田]]\ntags: [設計]\n---\n");
+    expect(p.links).toEqual(["山田", "設計"]);
+    expect(p.tags).toEqual(["設計"]);
+  });
+
+  it("props の [[旧名]] を改名に追従させる", () => {
+    const props = { author: "[[旧]]", list: ["[[旧]]", "[[他]]"], bare: [["旧"]], n: 3 };
+    expect(renamePropLinks(props, "旧", "新")).toEqual({ author: "[[新]]", list: ["[[新]]", "[[他]]"], bare: [["新"]], n: 3 });
+  });
+
+  it("題名の比較は NFC にそろえる", () => {
+    const nfd = "が".normalize("NFD");
+    expect(normalizeTitle(nfd)).toBe(normalizeTitle("が"));
+  });
+
+  it("書き出しは予約項目を先頭、残りは名前順。長い文字列を折り返さない", () => {
+    const long = "あ".repeat(120);
+    const text = serializePage({ z: 1, memo: long, type: "book", id: "01J", a: "x" }, "本文");
+    const lines = text.split("\n");
+    expect(lines.slice(1, 6)).toEqual(["id: 01J", "type: book", "a: x", `memo: ${long}`, "z: 1"]);
+  });
+
+  it("MemoryStore の改名は中身を保ち、同名があれば衝突にする", async () => {
+    const s = new MemoryStore();
+    const enc = new TextEncoder();
+    await s.write("pages/a.md", enc.encode("A"));
+    await s.write("pages/b.md", enc.encode("B"));
+    await expect(s.rename("pages/a.md", "pages/b.md")).rejects.toThrow();
+    await s.rename("pages/a.md", "pages/c.md");
+    expect(new TextDecoder().decode(await s.read("pages/c.md"))).toBe("A");
+    expect((await s.list("pages/")).map((e) => e.path).sort()).toEqual(["pages/b.md", "pages/c.md"]);
   });
 });

@@ -1,4 +1,4 @@
-import { ConflictError, LinkGraph, merge3, normalizeTitle, parsePage, renameLinks, serializePage, type Page, type Store, type StoreEntry } from "@lim/core";
+import { ConflictError, LinkGraph, MAX_TITLE_LENGTH, merge3, normalizeTitle, parsePage, renameLinks, renamePropLinks, serializePage, type Page, type Store, type StoreEntry } from "@lim/core";
 
 /** 一覧と本文をまとめて返せる保存先 */
 export interface BulkLoader {
@@ -13,9 +13,19 @@ export interface PageItem {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-/** ファイル名に使えない文字を置き換える */
+/**
+ * 題名をファイル名に使える形にする：NFC にそろえ、使えない文字と制御文字を置き換え、
+ * 先頭のドットと末尾のドット・空白を外し、MAX_TITLE_LENGTH 文字までにする
+ */
 export function sanitizeTitle(title: string): string {
-  return title.replace(/[\\/:*?"<>|]/g, "－").replace(/\s+/g, " ").trim();
+  const t = title
+    .normalize("NFC")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[\\/:*?"<>|]/g, "－")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^\.+/, "");
+  return [...t].slice(0, MAX_TITLE_LENGTH).join("").replace(/[.\s]+$/, "");
 }
 
 export const pathOf = (title: string) => `pages/${sanitizeTitle(title)}.md`;
@@ -201,16 +211,31 @@ export class Workspace {
       throw new Error(`「${next}」という名前のページはすでにあります`);
     }
     const referrers = this.graph.linksTo(page.title).filter((p) => p.title !== page.title);
-    await this.put(next, page.props, page.body);
-    await this.store.remove(page.path);
-    this.revs.delete(page.path);
-    this.bases.delete(page.path);
-    this.graph.remove(page.title);
-    this.updated.delete(normalizeTitle(page.title));
-    // 大文字小文字だけの改名では put が同じキーを上書きしているので、消した分を戻す
-    if (!this.exists(next)) await this.put(next, page.props, page.body);
+    if (this.store.rename) {
+      // 保存先の「名前の変更」を使う（ドライブの版履歴とファイル ID が残り、途中で失敗しても二重や欠落が出ない）
+      const to = pathOf(next);
+      const entry = await this.store.rename(page.path, to);
+      const base = this.bases.get(page.path);
+      this.revs.delete(page.path);
+      this.bases.delete(page.path);
+      this.graph.remove(page.title);
+      this.updated.delete(normalizeTitle(page.title));
+      this.revs.set(to, entry.revision);
+      if (base !== undefined) this.bases.set(to, base);
+      this.graph.upsert(parsePage(to, serializePage(page.props, page.body)));
+      this.updated.set(normalizeTitle(next), entry.updatedAt);
+    } else {
+      await this.put(next, page.props, page.body);
+      await this.store.remove(page.path);
+      this.revs.delete(page.path);
+      this.bases.delete(page.path);
+      this.graph.remove(page.title);
+      this.updated.delete(normalizeTitle(page.title));
+      // 大文字小文字だけの改名では put が同じキーを上書きしているので、消した分を戻す
+      if (!this.exists(next)) await this.put(next, page.props, page.body);
+    }
     for (const r of referrers) {
-      await this.put(r.title, r.props, renameLinks(r.body, page.title, next));
+      await this.put(r.title, renamePropLinks(r.props, page.title, next), renameLinks(r.body, page.title, next));
     }
     this.emit();
     return next;

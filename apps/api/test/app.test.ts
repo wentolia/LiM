@@ -123,6 +123,19 @@ describe("API", () => {
     expect((await s.call("alice", "PUT", url, "2", { "If-Match": first.revision })).status).toBe(200);
   });
 
+  it("改名は同じフォルダの .md だけ。行き先に別のページがあれば 409", async () => {
+    const s = setup();
+    await s.login("alice", "alice@example.com", true);
+    const p = await (await s.call("alice", "POST", "/api/projects", { name: "a" })).json();
+    const f = (path: string) => `/api/projects/${p.id}/file?path=${encodeURIComponent(path)}`;
+    await s.call("alice", "PUT", f("pages/x.md"), "X");
+    await s.call("alice", "PUT", f("pages/y.md"), "Y");
+    expect((await s.call("alice", "PATCH", `${f("pages/x.md")}&to=${encodeURIComponent("pages/y.md")}`)).status).toBe(409);
+    expect((await s.call("alice", "PATCH", `${f("pages/x.md")}&to=${encodeURIComponent("assets/x.md")}`)).status).toBe(400);
+    expect((await s.call("alice", "PATCH", `${f("pages/x.md")}&to=${encodeURIComponent("pages/z.md")}`)).status).toBe(200);
+    expect(await (await s.call("alice", "GET", f("pages/z.md"))).text()).toBe("X");
+  });
+
   it("画像は画像の Content-Type で返し、スクリプトは無効化する", async () => {
     const s = setup();
     await s.login("alice", "alice@example.com", true);

@@ -90,6 +90,14 @@ export class ApiStore implements Store {
     await call("DELETE", this.url(path));
   }
 
+  async rename(from: string, to: string): Promise<StoreEntry> {
+    const res = await fetch(`${this.url(from)}&to=${encodeURIComponent(to)}`, { method: "PATCH", credentials: "same-origin" });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 409) throw new ConflictError(to, body.current ?? "");
+    if (!res.ok) throw new ApiError(res.status, body.error ?? `名前を変えられませんでした（${res.status}）`);
+    return body as StoreEntry;
+  }
+
   /** 画像などを assets/ に保存し、ページから参照するパス（../assets/…）を返す */
   async upload(file: Blob, name = "image"): Promise<string> {
     if (file.size > 10 * 1024 * 1024) throw new Error("画像は 10MB までです");

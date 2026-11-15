@@ -40,6 +40,24 @@ describe("Workspace", () => {
     await expect(ws.rename("A", "B")).rejects.toThrow("すでにあります");
   });
 
+  it("改名は保存先の「名前の変更」を使い、props の [[旧名]] も書き換える", async () => {
+    const { store, ws } = await setup();
+    await store.write("pages/C.md", enc.encode('---\n参考: "[[KJ法]]"\n---\n本文'));
+    await ws.load();
+    const before = (await store.list("pages/")).find((e) => e.path === "pages/KJ法.md")!.revision;
+    await ws.rename("KJ法", "KJ法2");
+    // 中身はそのまま、版は続き番号（新規作成ではない）
+    expect(dec.decode(await store.read("pages/KJ法2.md"))).toBe("カード");
+    expect(Number((await store.list("pages/")).find((e) => e.path === "pages/KJ法2.md")!.revision)).toBe(Number(before) + 1);
+    expect(dec.decode(await store.read("pages/C.md"))).toContain('参考: "[[KJ法2]]"');
+  });
+
+  it("題名は NFC にそろえ、ファイル名に使えない形を直し、80 文字までにする", () => {
+    expect(sanitizeTitle("か\u3099")).toBe("が");
+    expect(sanitizeTitle("..隠し. ")).toBe("隠し");
+    expect([...sanitizeTitle("あ".repeat(100))].length).toBe(80);
+  });
+
   it("関連ページ：同じリンク先を持つページをリンク名ごとに返す", async () => {
     const { ws } = await setup();
     const rel = ws.related("A");
