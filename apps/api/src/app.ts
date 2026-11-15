@@ -240,10 +240,14 @@ export function createApp(deps: Deps) {
 
     // ---- 共同編集（WebSocket） ----
     ["GET", /^\/api\/projects\/(\w+)\/room(?:\/(.*))?$/, async (req, m, url) => {
-      // 他サイトからの WebSocket 接続を防ぐ
-      const origin = req.headers.get("Origin");
-      if (origin !== url.origin) throw new HttpError(403, "forbidden");
-      if (req.headers.get("Upgrade") !== "websocket") throw new HttpError(426, "WebSocket で接続してください");
+      // ?check=1 は接続できないときの診断（部屋を開けるかだけを JSON で返す）
+      const check = url.searchParams.get("check") === "1" && req.headers.get("Upgrade") !== "websocket";
+      if (!check) {
+        // 他サイトからの WebSocket 接続を防ぐ
+        const origin = req.headers.get("Origin");
+        if (origin !== url.origin) throw new HttpError(403, "forbidden");
+        if (req.headers.get("Upgrade") !== "websocket") throw new HttpError(426, "WebSocket で接続してください");
+      }
       await access(req, m[1]);
       const path = url.searchParams.get("path") ?? decodeURIComponent(m[2] ?? "");
       if (!validPath(path) || !path.endsWith(".md")) throw new HttpError(400, "bad path");

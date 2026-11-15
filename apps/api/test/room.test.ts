@@ -140,4 +140,19 @@ describe("共同編集の部屋", () => {
     await room2.load();
     expect(room2.doc.getText("body").toString()).toBe("new from drive");
   });
+
+  it("読み込みに失敗しても、次の接続でやり直せる", async () => {
+    const { file } = fakeFile("hello");
+    let fail = true;
+    const room = new Room({
+      file: { ...file, stat: async () => { if (fail) throw new Error("drive down"); return file.stat(); } },
+      storage: { get: async () => undefined, put: async () => {} },
+      setTimer: () => 0,
+      clearTimer: () => {},
+    });
+    await expect(room.load()).rejects.toThrow("drive down");
+    fail = false;
+    await room.load();
+    expect(room.doc.getText("body").toString()).toContain("hello");
+  });
 });

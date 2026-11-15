@@ -162,6 +162,17 @@ describe("API", () => {
     expect((await s.call("bob", "GET", url, undefined, { Upgrade: "websocket", Origin: ORIGIN })).status).toBe(404);
   });
 
+  it("部屋の診断（check=1）は WebSocket なしで部屋へ通し、メンバー以外は断る", async () => {
+    const s = setup();
+    await s.login("alice", "alice@example.com", true);
+    const p = await (await s.call("alice", "POST", "/api/projects", { name: "a" })).json();
+    const url = `/api/projects/${p.id}/room?check=1&path=${encodeURIComponent("pages/議事録.md")}`;
+    expect((await s.call("alice", "GET", url)).status).toBe(200);
+    expect(s.rooms).toEqual([`${p.id}:pages/議事録.md`]);
+    await s.login("bob", "bob@example.com");
+    expect((await s.call("bob", "GET", url)).status).toBe(404);
+  });
+
   it("ドライブ未接続の人はプロジェクトを作れない", async () => {
     const s = setup();
     await s.login("bob", "bob@example.com");
