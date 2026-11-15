@@ -130,3 +130,13 @@ describe("serialize / rename / excerpt", () => {
     expect(excerpt("# 見出し\n\n- [[A]] です\n```\ncode\n```\n二行目", 3)).toBe("見出し\nA です\n二行目");
   });
 });
+
+import { ConflictError, MemoryStore as MS } from "../src/store";
+describe("楽観ロック", () => {
+  it("revision が違えば ConflictError", async () => {
+    const s = new MS();
+    const e = await s.write("pages/a.md", new Uint8Array([1]), undefined, { ifRevision: "" });
+    await expect(s.write("pages/a.md", new Uint8Array([2]), undefined, { ifRevision: "" })).rejects.toBeInstanceOf(ConflictError);
+    await s.write("pages/a.md", new Uint8Array([2]), undefined, { ifRevision: e.revision });
+  });
+});

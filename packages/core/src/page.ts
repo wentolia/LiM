@@ -111,7 +111,7 @@ export function renameLinks(text: string, oldTitle: string, nextTitle: string): 
 export function excerpt(body: string, maxLines = 5): string {
   return stripCode(body)
     .split(/\r?\n/)
-    .map((l) => l.replace(WIKILINK, "$1").replace(/^#{1,6}\s+/, "").replace(/^\s*[-*]\s+/, "").trim())
+    .map((l) => l.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(WIKILINK, "$1").replace(/^#{1,6}\s+/, "").replace(/^\s*[-*]\s+/, "").trim())
     .filter(Boolean)
     .slice(0, maxLines)
     .join("\n");

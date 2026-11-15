@@ -81,6 +81,15 @@ describe("DriveStore", () => {
     expect(dec.decode(await fresh.read("pages/a.md"))).toBe("2");
   });
 
+  it("ifRevision が違えば ConflictError", async () => {
+    const d = fakeDrive();
+    const s = new DriveStore(async () => "tok", "SABAKAN", d.fetcher);
+    const e = await s.write("pages/a.md", enc.encode("1"), undefined, { ifRevision: "" });
+    await expect(s.write("pages/a.md", enc.encode("2"), undefined, { ifRevision: "" })).rejects.toThrow("先に保存");
+    await s.write("pages/a.md", enc.encode("2"), undefined, { ifRevision: e.revision });
+    expect(dec.decode(await s.read("pages/a.md"))).toBe("2");
+  });
+
   it("削除はゴミ箱へ移す", async () => {
     const d = fakeDrive();
     const s = new DriveStore(async () => "tok", "SABAKAN", d.fetcher);

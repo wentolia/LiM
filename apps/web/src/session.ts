@@ -16,8 +16,9 @@ export async function openLocal(): Promise<Workspace> {
   return ws;
 }
 
-export async function openProject(id: string): Promise<Workspace> {
-  const ws = new Workspace(new ApiStore(id));
+export async function openProject(id: string): Promise<{ ws: Workspace; store: ApiStore }> {
+  const store = new ApiStore(id);
+  const ws = new Workspace(store);
   await ws.load();
-  return ws;
+  return { ws, store };
 }

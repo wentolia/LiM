@@ -68,6 +68,6 @@ export async function seedIfEmpty(store: LocalStorageStore): Promise<void> {
   if (!store.isEmpty()) return;
   const enc = new TextEncoder();
   for (const [title, updatedAt, text] of SAMPLES) {
-    await store.write(pathOf(title), enc.encode(text), "text/markdown", new Date(updatedAt).toISOString());
+    await store.write(pathOf(title), enc.encode(text), "text/markdown", { updatedAt: new Date(updatedAt).toISOString() });
   }
 }

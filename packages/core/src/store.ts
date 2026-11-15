@@ -5,10 +5,30 @@
 export interface Store {
   list(prefix: string): Promise<StoreEntry[]>;
   read(path: string): Promise<Uint8Array>;
-  write(path: string, data: Uint8Array, contentType?: string): Promise<StoreEntry>;
+  /** opts.ifRevision を渡すと、保存先の revision が違うとき ConflictError を投げる（楽観ロック） */
+  write(path: string, data: Uint8Array, contentType?: string, opts?: WriteOptions): Promise<StoreEntry>;
   remove(path: string): Promise<void>;
   /** 前回の cursor 以降の変更（索引の差分更新用） */
   changes(cursor?: string): Promise<{ changed: StoreEntry[]; removed: string[]; cursor: string }>;
+}
+
+export interface WriteOptions {
+  /** この revision のときだけ書く。"" は「まだ無いときだけ」 */
+  ifRevision?: string;
+}
+
+/** 楽観ロックの失敗。他の人が先に保存した */
+export class ConflictError extends Error {
+  constructor(public path: string, public current: string) {
+    super(`他の人が先に保存しました: ${path}`);
+    this.name = "ConflictError";
+  }
+}
+
+/** 楽観ロックの判定（実装共通） */
+export function checkRevision(path: string, current: string | undefined, opts?: WriteOptions): void {
+  if (opts?.ifRevision === undefined) return;
+  if ((current ?? "") !== opts.ifRevision) throw new ConflictError(path, current ?? "");
 }
 
 export interface StoreEntry {
@@ -34,8 +54,9 @@ export class MemoryStore implements Store {
     return f.data;
   }
 
-  async write(path: string, data: Uint8Array): Promise<StoreEntry> {
+  async write(path: string, data: Uint8Array, _contentType?: string, opts?: WriteOptions): Promise<StoreEntry> {
     const prev = this.files.get(path);
+    checkRevision(path, prev?.entry.revision, opts);
     const entry: StoreEntry = {
       path,
       revision: String(Number(prev?.entry.revision ?? 0) + 1),

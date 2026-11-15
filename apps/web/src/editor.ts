@@ -1,8 +1,9 @@
-import { EditorState, type Extension } from "@codemirror/state";
+import { Annotation, EditorState, type Extension } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
   ViewPlugin,
+  WidgetType,
   keymap,
   type DecorationSet,
   type ViewUpdate,
@@ -11,11 +12,51 @@ import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from "@
 
 const LINK = /\[\[([^\[\]\n|]+?)(\|[^\[\]\n]*)?\]\]/g;
 const TAG = /(^|[\s(])#([^\s#\[\](),.、。!?！？]+)/gu;
+const IMAGE_LINE = /^(\s*)!\[([^\]]*)\]\(([^)\s]+)\)\s*$/;
 const hidden = Decoration.replace({});
 
 export interface LinkHandlers {
   open: (title: string) => void;
   exists: (title: string) => boolean;
+  /** 画像パス（../assets/x.png）を表示用 URL にする */
+  resolve?: (src: string) => string;
+  /** 貼り付け・ドロップされた画像を保存し、ページに書くパスを返す（無ければ画像は貼れない） */
+  upload?: (file: File) => Promise<string>;
+  onUploadError?: (message: string) => void;
+}
+
+class ImageWidget extends WidgetType {
+  constructor(readonly src: string, readonly alt: string) {
+    super();
+  }
+  eq(other: ImageWidget) {
+    return other.src === this.src && other.alt === this.alt;
+  }
+  toDOM() {
+    const img = document.createElement("img");
+    img.className = "cm-lim-image";
+    img.src = this.src;
+    img.alt = this.alt;
+    img.loading = "lazy";
+    return img;
+  }
+}
+
+/** 外から本文を差し替えたことを示す（保存のきっかけにしない） */
+export const remoteChange = Annotation.define<boolean>();
+
+/** 本文を差し替える。前後の共通部分は残すので、カーソル位置がずれにくい */
+export function replaceText(view: EditorView, next: string): void {
+  const cur = view.state.doc.toString();
+  if (cur === next) return;
+  let a = 0;
+  while (a < cur.length && a < next.length && cur[a] === next[a]) a++;
+  let b = 0;
+  while (b < cur.length - a && b < next.length - a && cur[cur.length - 1 - b] === next[next.length - 1 - b]) b++;
+  view.dispatch({
+    changes: { from: a, to: cur.length - b, insert: next.slice(a, next.length - b) },
+    annotations: remoteChange.of(true),
+  });
 }
 
 /**
@@ -36,6 +77,13 @@ function livePreview(h: LinkHandlers): Extension {
       for (let pos = from; pos <= to; ) {
         const line = view.state.doc.lineAt(pos);
         const isActive = active.has(line.number);
+        const img = !isActive && line.text.match(IMAGE_LINE);
+        if (img) {
+          const src = h.resolve ? h.resolve(img[3]) : img[3];
+          decos.push({ from: line.from, to: line.to, value: Decoration.replace({ widget: new ImageWidget(src, img[2]) }) });
+          pos = line.to + 1;
+          continue;
+        }
         for (const m of line.text.matchAll(LINK)) {
           const start = line.from + m.index!;
           const name = m[1];
@@ -94,6 +142,7 @@ const theme = EditorView.theme({
   ".cm-lim-link": { color: "#0B4F8A", textDecoration: "underline", cursor: "pointer" },
   ".cm-lim-missing": { color: "#9A3412", textDecorationStyle: "dashed" },
   ".cm-lim-tag": { color: "#0B4F8A", cursor: "pointer" },
+  ".cm-lim-image": { display: "block", maxWidth: "100%", maxHeight: "480px", border: "1px solid #BFBFBF", margin: "4px 0" },
   ".cm-lim-raw": { fontFamily: "'IBM Plex Mono', 'BIZ UDGothic', monospace", fontSize: "13px" },
 });
 
@@ -120,6 +169,21 @@ export function createEditor(
         livePreview(handlers),
         theme,
         EditorView.domEventHandlers({
+          paste(e, view) {
+            const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+            if (!files.length || !handlers.upload) return false;
+            e.preventDefault();
+            void insertImages(view, files, handlers, view.state.selection.main.head);
+            return true;
+          },
+          drop(e, view) {
+            const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+            if (!files.length || !handlers.upload) return false;
+            e.preventDefault();
+            const pos = view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.selection.main.head;
+            void insertImages(view, files, handlers, pos);
+            return true;
+          },
           mousedown(e) {
             const el = (e.target as HTMLElement).closest<HTMLElement>("[data-title]");
             if (!el?.dataset.title) return false;
@@ -129,9 +193,28 @@ export function createEditor(
           },
         }),
         EditorView.updateListener.of((u) => {
-          if (u.docChanged) onChange(u.state.doc.toString());
+          if (u.docChanged && !u.transactions.some((t) => t.annotation(remoteChange))) onChange(u.state.doc.toString());
         }),
       ],
     }),
   });
+}
+
+/** 画像を保存して、pos の行の下に 1 枚 1 行で書き込む */
+async function insertImages(view: EditorView, files: File[], h: LinkHandlers, pos: number): Promise<void> {
+  const lines: string[] = [];
+  for (const f of files) {
+    try {
+      lines.push(`![](${await h.upload!(f)})`);
+    } catch (e) {
+      h.onUploadError?.(e instanceof Error ? e.message : String(e));
+    }
+  }
+  if (!lines.length) return;
+  const line = view.state.doc.lineAt(Math.min(pos, view.state.doc.length));
+  const empty = line.text.trim() === "";
+  const insert = empty ? lines.join("\n") : "\n" + lines.join("\n");
+  const from = empty ? line.from : line.to;
+  view.dispatch({ changes: { from, to: empty ? line.to : line.to, insert }, selection: { anchor: from + insert.length } });
+  view.focus();
 }
