@@ -1,5 +1,6 @@
 // Cloudflare Workers の設定。
 // ダッシュボードの「Root directory」は空欄（リポジトリ直下）、Build command は npm run build。
+// 本番のブランチ（設定 → ビルド → ブランチの制御）は main。他のブランチにすると main のマージが本番に出ない。
 // 画面（apps/web/dist）は静的配信、/api/* だけ Worker（apps/api）が処理する。
 {
   "$schema": "node_modules/wrangler/config-schema.json",
