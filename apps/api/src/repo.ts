@@ -79,7 +79,7 @@ export class D1Repo implements Repo {
     if (!row) return null;
     const c = this.cipher;
     if (!isEncrypted(row.refresh_token)) {
-      if (!c) return row;
+      if (!c) return row.access_token && isEncrypted(row.access_token) ? { ...row, access_token: null, expires_at: null } : row;
       const sealed = await c.encrypt(row.refresh_token, aad(userId, "refresh_token"));
       await this.run(
         "UPDATE drive_tokens SET refresh_token = ?, access_token = NULL, expires_at = NULL WHERE user_id = ? AND refresh_token = ?",
@@ -87,12 +87,16 @@ export class D1Repo implements Repo {
       );
       return { user_id: userId, refresh_token: row.refresh_token, access_token: null, expires_at: null };
     }
-    const refresh = c ? await c.decrypt(row.refresh_token, aad(userId, "refresh_token")) : null;
-    if (refresh === null) {
-      console.error(`drive_tokens の refresh_token を読めません（user_id: ${userId}）。ドライブの接続し直しが必要です`);
+    if (!c) {
+      console.error(`drive_tokens.refresh_token は暗号化済みですが DRIVE_TOKEN_KEY がありません（user_id: ${userId}）。鍵を登録してください`);
       return null;
     }
-    const access = row.access_token && isEncrypted(row.access_token) ? await c!.decrypt(row.access_token, aad(userId, "access_token")) : null;
+    const refresh = await c.decrypt(row.refresh_token, aad(userId, "refresh_token"));
+    if (refresh === null) {
+      console.error(`drive_tokens.refresh_token を今の DRIVE_TOKEN_KEY で読めません（user_id: ${userId}）。鍵を確かめるか、ドライブを接続し直してください`);
+      return null;
+    }
+    const access = row.access_token && isEncrypted(row.access_token) ? await c.decrypt(row.access_token, aad(userId, "access_token")) : null;
     return { user_id: userId, refresh_token: refresh, access_token: access, expires_at: access ? row.expires_at : null };
   }
   async putDriveToken(t: DriveToken) {

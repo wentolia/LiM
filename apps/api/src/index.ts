@@ -1,7 +1,7 @@
 import { createApp, defaultOpenDrive } from "./app";
 import { GoogleOAuth } from "./google";
 import { D1Repo, type D1Database } from "./repo";
-import { tokenCipher } from "./tokenCipher";
+import { BadTokenKey, tokenCipher, type TokenCipher } from "./tokenCipher";
 
 export { PageRoom } from "./roomObject";
 import { roomRequest } from "./roomTarget";
@@ -28,8 +28,15 @@ export default {
     if (!env.GOOGLE_CLIENT_SECRET) {
       return Response.json({ error: "サーバーの設定（GOOGLE_CLIENT_SECRET）がまだです" }, { status: 503 });
     }
+    let cipher: TokenCipher | null;
+    try {
+      cipher = await tokenCipher(env.DRIVE_TOKEN_KEY);
+    } catch (e) {
+      if (e instanceof BadTokenKey) return Response.json({ error: e.message }, { status: 503 });
+      throw e;
+    }
     const app = createApp({
-      repo: new D1Repo(env.DB, await tokenCipher(env.DRIVE_TOKEN_KEY)),
+      repo: new D1Repo(env.DB, cipher),
       google: new GoogleOAuth({
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,

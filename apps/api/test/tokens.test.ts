@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { ownerAccessToken } from "../src/app";
+import { createApp, ownerAccessToken } from "../src/app";
 import type { Google } from "../src/google";
 import { D1Repo, type D1Database } from "../src/repo";
-import { isEncrypted, tokenCipher } from "../src/tokenCipher";
+import { BadTokenKey, isEncrypted, tokenCipher } from "../src/tokenCipher";
 import { freshD1 } from "./d1";
 
 const KEY_A = btoa(String.fromCharCode(...new Uint8Array(32).fill(1)));
@@ -41,14 +41,18 @@ describe("tokenCipher", () => {
     expect(await c.decrypt("1//plain", "drive_tokens:u1:refresh_token")).toBeNull();
   });
 
-  it("鍵が無い・32 バイトでないときは null（平文で動く）。前後の空白は無視する", async () => {
+  it("未登録なら null（移行期間：平文で動く）。前後の空白は無視する", async () => {
     const restore = quiet();
     expect(await tokenCipher(undefined)).toBeNull();
-    expect(await tokenCipher("")).toBeNull();
-    expect(await tokenCipher(btoa("short"))).toBeNull();
-    expect(await tokenCipher("not base64 !!")).toBeNull();
+    expect(await tokenCipher(" \n")).toBeNull();
     restore();
     expect(await tokenCipher(` ${KEY_A}\n`)).not.toBeNull();
+  });
+
+  it("登録したのに 32 バイトの base64 でなければ投げる（黙って平文に戻らない）", async () => {
+    await expect(tokenCipher(btoa("short"))).rejects.toBeInstanceOf(BadTokenKey);
+    await expect(tokenCipher("not base64 !!")).rejects.toBeInstanceOf(BadTokenKey);
+    await expect(tokenCipher(`"${KEY_A}"`)).rejects.toBeInstanceOf(BadTokenKey);
   });
 });
 
@@ -134,5 +138,41 @@ describe("D1Repo のドライブの鍵（ローカルの D1）", { timeout: 20_0
     expect(calls).toEqual(["1//rt"]);
     const raw = await rawRow(d);
     expect(isEncrypted(raw!.access_token as string)).toBe(true);
+  });
+
+  it("読めない行があっても、管理者は画面を開けて（未接続と表示）、ドライブを接続し直せる", async () => {
+    const d = await freshD1();
+    await new D1Repo(d, await cipher(KEY_B)).putDriveToken({ user_id: "alice", refresh_token: "1//old", access_token: null, expires_at: null });
+    const repo = new D1Repo(d, await cipher(KEY_A));
+    let seq = 0;
+    let drive = false;
+    const app = createApp({
+      repo, clientId: "cid", now: () => 1_000_000, randomId: () => `r${++seq}abcdefghijkl`,
+      openDrive: () => ({ findFolder: async () => undefined }) as never, // 以前のフォルダは無い
+      google: {
+        authUrl: (state) => `https://accounts.google.com/auth?state=${state}`,
+        refresh: async () => { throw new Error("unused"); },
+        exchange: async () => ({
+          access_token: "ya29.new", expires_in: 3600,
+          ...(drive ? { refresh_token: "1//new", scope: "openid https://www.googleapis.com/auth/drive.file" } : {}),
+          id_token: `x.${btoa(JSON.stringify({ sub: "alice", email: "alice@example.com", name: "A", aud: "cid", email_verified: true })).replace(/=+$/, "")}.y`,
+        }),
+      },
+    });
+    const login = async (withDrive: boolean) => {
+      drive = withDrive;
+      const start = await app(new Request(`https://x/api/auth/login${withDrive ? "?drive=1" : ""}`));
+      const state = new URL(start.headers.get("Location")!).searchParams.get("state")!;
+      const cb = await app(new Request(`https://x/api/auth/callback?code=c&state=${state}`, { headers: { Cookie: `oauth_state=${state}` } }));
+      expect(cb.status).toBe(302);
+      return cb.headers.get("Set-Cookie")!.match(/sid=([^;]+)/)![1];
+    };
+    const me = async (sid: string) => (await app(new Request("https://x/api/me", { headers: { Cookie: `sid=${sid}` } }))).json() as Promise<{ driveConnected: boolean }>;
+
+    const restore = quiet();
+    expect((await me(await login(false))).driveConnected).toBe(false);
+    expect((await me(await login(true))).driveConnected).toBe(true);
+    restore();
+    expect(await repo.getDriveToken("alice")).toEqual({ user_id: "alice", refresh_token: "1//new", access_token: "ya29.new", expires_at: 1_000_000 + 3600_000 });
   });
 });

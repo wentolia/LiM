@@ -53,7 +53,7 @@ npm run build      # 型チェック + 本番ビルド（apps/web/dist）
 ## プロジェクトと保存先
 
 - **プロジェクト** = 管理者のマイドライブ/SABAKAN/<プロジェクト名>/ フォルダ（中に `pages/*.md`）
-- メンバーは Google で本人確認だけ行う。読み書きはサーバーが管理者の代わりに行う（管理者の refresh token を暗号化して D1 に保存。決定 0002）
+- メンバーは Google で本人確認だけ行う。読み書きはサーバーが管理者の代わりに行う（管理者の refresh token を D1 に保存。`DRIVE_TOKEN_KEY` を登録すると暗号化する。決定 0002）
 - 招待はメールアドレスを登録するだけ。その Google アカウントでログインすると一覧に出る
 - 役割：管理者（招待・外す）／メンバー（ページの読み書き）
 - 管理者が最初にドライブを接続したとき、以前の SABAKAN/pages があれば「マイページ」プロジェクトとして取り込む
@@ -80,5 +80,5 @@ npm run build      # 型チェック + 本番ビルド（apps/web/dist）
 |---|---|
 | Google Cloud：OAuth クライアント | 承認済みのリダイレクト URI：`https://sabakan.hakuwentolia.workers.dev/api/auth/callback`（ローカルは `http://localhost:8787/api/auth/callback`） |
 | Google Cloud：OAuth 同意画面 | スコープ `drive.file`。公開ステータスを「本番環境」にする（テスト中だと管理者の接続が 7 日で切れる） |
-| Cloudflare：変数とシークレット | `GOOGLE_CLIENT_SECRET`（シークレット）、`DRIVE_TOKEN_KEY`（シークレット。32 バイトの乱数の base64。ドライブの鍵を暗号化する。なくしたら管理者がドライブを接続し直す） |
+| Cloudflare：変数とシークレット | `GOOGLE_CLIENT_SECRET`（シークレット）、`DRIVE_TOKEN_KEY`（シークレット。ドライブの鍵を暗号化する。作り方：ブラウザの開発者ツールで `btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))`。未登録の間は暗号化せずに動き、形が違えば 503 になる。なくしたら管理者がドライブを接続し直す。決定 0002） |
 | wrangler.jsonc | `GOOGLE_CLIENT_ID`（公開値）、D1 `sabakan`（初回デプロイで自動作成） |

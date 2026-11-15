@@ -29,10 +29,9 @@ function fromB64(text: string): Uint8Array<ArrayBuffer> {
 }
 
 /** 鍵の文字列をちょうど 32 バイトとして読む。違えば null */
-function keyBytes(secret: string | undefined): Uint8Array<ArrayBuffer> | null {
-  if (!secret) return null;
+function keyBytes(secret: string): Uint8Array<ArrayBuffer> | null {
   try {
-    const raw = fromB64(secret.trim());
+    const raw = fromB64(secret);
     return raw.length === 32 ? raw : null;
   } catch {
     return null;
@@ -48,8 +47,9 @@ async function makeCipher(raw: Uint8Array<ArrayBuffer>): Promise<TokenCipher> {
       return `${PREFIX}${toB64url(iv)}.${toB64url(new Uint8Array(ct))}`;
     },
     async decrypt(stored, aad) {
+      if (!isEncrypted(stored)) return null;
       const [, iv, ct, extra] = stored.split(".");
-      if (!isEncrypted(stored) || !iv || !ct || extra !== undefined) return null;
+      if (!iv || !ct || extra !== undefined) return null;
       try {
         const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromB64(iv), additionalData: enc.encode(aad) }, key, fromB64(ct));
         return dec.decode(pt);
@@ -63,21 +63,29 @@ async function makeCipher(raw: Uint8Array<ArrayBuffer>): Promise<TokenCipher> {
 const cache = new Map<string, Promise<TokenCipher>>();
 let warned = false;
 
+/** 登録したのに形が違う鍵。黙って平文に戻らないよう、サーバーは 503 を返す（決定 0002） */
+export class BadTokenKey extends Error {
+  constructor() { super("サーバーの設定（DRIVE_TOKEN_KEY）が正しくありません。32 バイトの乱数の base64 を登録してください"); }
+}
+
 /**
  * シークレットから暗号器を作る（実行環境ごとに 1 回）。
- * 鍵が無い・32 バイトでないときは null（移行期間：今までどおり平文で動く。決定 0002）
+ * 未登録（空）なら null：移行期間として今までどおり平文で動く。登録してあるのに 32 バイトでなければ BadTokenKey を投げる
  */
 export async function tokenCipher(secret: string | undefined): Promise<TokenCipher | null> {
-  const raw = keyBytes(secret);
-  if (!raw) {
+  const id = secret?.trim() ?? "";
+  if (!id) {
     if (!warned) {
       warned = true;
-      console.warn(secret ? "DRIVE_TOKEN_KEY が 32 バイトの base64 ではありません。ドライブの鍵を暗号化せずに保存します" : "DRIVE_TOKEN_KEY がありません。ドライブの鍵を暗号化せずに保存します");
+      console.warn("DRIVE_TOKEN_KEY がありません。ドライブの鍵を暗号化せずに保存します");
     }
     return null;
   }
-  const id = secret!.trim();
   let c = cache.get(id);
-  if (!c) cache.set(id, (c = makeCipher(raw)));
+  if (!c) {
+    const raw = keyBytes(id);
+    if (!raw) throw new BadTokenKey();
+    cache.set(id, (c = makeCipher(raw)));
+  }
   return c;
 }
