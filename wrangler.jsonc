@@ -7,6 +7,7 @@
   "main": "apps/api/src/index.ts",
   "compatibility_date": "2026-06-01",
   // Durable Objects を使う Worker ではプレビュー URL が使えないため切る（main 以外のブランチのビルド用）
+  // あわせて、ブランチの版が本番 D1 に未マージの migration を当てないためにも切ったままにする（決定 0002）
   "preview_urls": false,
   "assets": {
     "directory": "./apps/web/dist",

@@ -2,11 +2,23 @@
  * D1 の表の定義（ここだけ。決定 0002）
  *
  * - D1 を変えるときは MIGRATIONS の末尾に番号を足すだけ。書いた番号の中身は直さない
- * - 古いコードと新しいコードが同時に動いても壊れる変更にしない（列は足すだけ。消すのは使わなくなってから別の番号で）
+ * - 古いコードと新しいコードが同時に動いても壊れる変更にしない（列は足すだけ。消す・改名するのは使わなくなってから別の番号で）
  * - IF NOT EXISTS は 1 番だけの例外（migration を入れる前からある本番 DB のため）。2 番以降では使わない
  * - ドライブのファイルの形を変える「移行」とは別物
  */
-import type { D1Database } from "./repo";
+
+/* D1 の必要最小限の型（@cloudflare/workers-types を入れずに済ませる） */
+export interface D1Stmt {
+  bind(...v: unknown[]): D1Stmt;
+  first<T>(): Promise<T | null>;
+  all<T>(): Promise<{ results: T[] }>;
+  run(): Promise<unknown>;
+}
+export interface D1Database {
+  prepare(sql: string): D1Stmt;
+  /** 1 つのトランザクションとして流す。途中で失敗すれば全体が取り消される */
+  batch<T = unknown>(stmts: D1Stmt[]): Promise<{ results: T[] }[]>;
+}
 
 export interface Migration { version: number; name: string; sql: string[] }
 
@@ -48,8 +60,11 @@ export async function migrate(db: D1Database, list: Migration[] = MIGRATIONS, no
       ]);
       done = m.version;
     } catch (e) {
-      done = await applied(db);
-      if (done < m.version) throw e;
+      done = await applied(db).catch(() => done);
+      if (done < m.version) {
+        console.error(`D1 の migration ${m.version}（${m.name}）に失敗しました`, e);
+        throw e;
+      }
     }
   }
 }

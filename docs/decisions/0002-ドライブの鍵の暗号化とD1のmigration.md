@@ -97,10 +97,12 @@ export const MIGRATIONS: { version: number; name: string; sql: string[] }[] = [
 | 当てる時 | 今の `init()` と同じく、isolate ごとに最初の D1 アクセスの前に 1 回。`db.batch([CREATE TABLE IF NOT EXISTS schema_migrations ..., SELECT max(version) FROM schema_migrations])` の 1 往復で済んだ番号を見て、残りを番号順に当てる |
 | 1 つの番号の当て方 | `db.batch([INSERT INTO schema_migrations ..., ...その番号の SQL])`。D1 の batch は 1 つのトランザクション（Cloudflare の文書による）なので、途中で失敗すれば全体が取り消される |
 | 失敗したとき | `max(version)` を読み直す。その番号以上なら別の isolate が先に当てたとみなして続ける。未満なら元の例外を投げる（SQL の誤り）。読み直しは 1 回まで |
+| 失敗の記録 | 失敗した番号と名前を `console.error` に出す |
+| プレビュー | `wrangler.jsonc` の `preview_urls: false` を保つ。プレビューや段階的デプロイを有効にすると、ブランチの番号が本番 D1 に当たる |
 | 古いコードに戻したとき | `max(version)` がコードの知る最大より大きければ、何もせず通す |
 | 今の本番 DB | 1 番だけは今の 5 表を `IF NOT EXISTS` で書く（例外）。表はそのまま、`schema_migrations` に 1 番が記録されるだけ。2 番以降では `IF NOT EXISTS` を使わない（当たっていないのに記録だけ進む事故を隠すため） |
 | ローカル | `wrangler dev` でも同じコードが当てるので、手で流す SQL は要らない |
-| テスト | 空の DB・今の本番と同じ DB・2 つ同時に当てる・SQL の誤り・古いコードの場合。土台（Node の `node:sqlite` を D1 の形に包むか、wrangler の `getPlatformProxy()` のローカル D1 か）は実装時に動く方を選ぶ |
+| テスト | wrangler の `getPlatformProxy()` のローカル D1（本物の D1 の実装）で、空の DB・今の本番と同じ DB・3 つ同時に当てる・SQL の誤り・古いコードの場合を確かめる。1 番が当時の `SCHEMA` と同じこと、2 番以降に `IF NOT EXISTS` が無いこともテストで守る |
 | `schema.sql` | 消す |
 
 ### 書き方の決まり（PR 1 で CLAUDE.md に足す）
@@ -117,6 +119,7 @@ export const MIGRATIONS: { version: number; name: string; sql: string[] }[] = [
 | isolate の起動ごとの D1 | `CREATE TABLE IF NOT EXISTS` を 5 本（1 往復） | 2 文を 1 往復（未適用があるときだけ追加） |
 | 管理者の鍵を読むたびの CPU | なし | AES-GCM の復号 1〜2 回（200 バイト程度。1ms を大きく下回る） |
 | D1 の書き込み | なし | 平文の行の書き戻しが 1 行に 1 回だけ |
+| migration が失敗している間 | なし | 1 リクエストごとに D1 を 3 往復して失敗する（直すまで全員が使えないので、件数より復旧が先） |
 
 常時動く処理・外部の呼び出し・新しい保存先は増えない。
 
