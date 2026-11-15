@@ -1,4 +1,6 @@
-# LiM
+# SABAKAN
+
+> 旧称 LiM（Less is More）。
 
 Cosense の書きやすさと Google ドキュメントの整える力を、**オープンな形式**（Markdown + frontmatter + `[[リンク]]`）の上で実現するノート / データベースアプリ。
 
@@ -42,4 +44,21 @@ npm test           # core と web のテスト
 npm run build      # 型チェック + 本番ビルド（apps/web/dist）
 ```
 
-現在の保存先はブラウザの localStorage（初回はサンプルページ入り）。Google ドライブ連携は `Store` I/F の実装を追加して差し替える予定。
+## 保存先
+
+| モード | 保存先 | 条件 |
+|---|---|---|
+| Google ドライブ | マイドライブ/SABAKAN/pages/*.md | `VITE_GOOGLE_CLIENT_ID` を設定してビルド |
+| このブラウザ | localStorage | 未設定時、またはログイン画面で選んだとき |
+
+- スコープは `drive.file`（SABAKAN が作ったファイルだけ読み書き）。サーバー不要、クライアントシークレット不要
+- 初回ログインでドライブが空なら、ブラウザ内のページをコピーする
+- 削除はドライブのゴミ箱へ移すだけ
+
+### Google Cloud の設定
+
+1. Google Cloud Console でプロジェクトを作成し、**Google Drive API** を有効化
+2. OAuth 同意画面：外部 / アプリ名 SABAKAN / スコープ `.../auth/drive.file` / テストユーザーに自分を追加
+3. 認証情報 → OAuth クライアント ID（ウェブアプリケーション）
+   - 承認済みの JavaScript 生成元：`https://sabakan.hakuwentolia.workers.dev`、`http://localhost:5173`（プレビュー URL も使うなら追加）
+4. クライアント ID を Cloudflare の **ビルド変数** `VITE_GOOGLE_CLIENT_ID` に設定（ローカルは `apps/web/.env.local`）

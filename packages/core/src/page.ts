@@ -1,6 +1,6 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-/** LiM の唯一のデータ型。1 Page = 1 Markdown ファイル。 */
+/** SABAKAN の唯一のデータ型。1 Page = 1 Markdown ファイル。 */
 export interface Page {
   /** 保存先上のパス（例: "pages/読書メモ.md"） */
   path: string;

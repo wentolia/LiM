@@ -2,7 +2,7 @@
 // ダッシュボードの「Root directory」は空欄（リポジトリ直下）、Build command は npm run build。
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "lim",
+  "name": "sabakan",
   "compatibility_date": "2026-06-01",
   "assets": {
     "directory": "./apps/web/dist",
