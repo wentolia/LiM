@@ -1,6 +1,7 @@
 import { createApp, defaultOpenDrive } from "./app";
 import { GoogleOAuth } from "./google";
 import { D1Repo, type D1Database } from "./repo";
+import { BadTokenKey, tokenCipher, type TokenCipher } from "./tokenCipher";
 
 export { PageRoom } from "./roomObject";
 import { roomRequest } from "./roomTarget";
@@ -15,6 +16,8 @@ export interface Env {
   ROOMS: DONamespace;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
+  /** ドライブの鍵を暗号化する鍵（32 バイトの base64。決定 0002） */
+  DRIVE_TOKEN_KEY: string;
   ASSETS: { fetch(req: Request): Promise<Response> };
 }
 
@@ -25,8 +28,18 @@ export default {
     if (!env.GOOGLE_CLIENT_SECRET) {
       return Response.json({ error: "サーバーの設定（GOOGLE_CLIENT_SECRET）がまだです" }, { status: 503 });
     }
+    if (!env.DRIVE_TOKEN_KEY) {
+      return Response.json({ error: "サーバーの設定（DRIVE_TOKEN_KEY）がまだです" }, { status: 503 });
+    }
+    let cipher: TokenCipher;
+    try {
+      cipher = await tokenCipher(env.DRIVE_TOKEN_KEY);
+    } catch (e) {
+      if (e instanceof BadTokenKey) return Response.json({ error: e.message }, { status: 503 });
+      throw e;
+    }
     const app = createApp({
-      repo: new D1Repo(env.DB),
+      repo: new D1Repo(env.DB, cipher),
       google: new GoogleOAuth({
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,

@@ -2,14 +2,13 @@ import { describe, expect, it } from "vitest";
 import { MemoryStore, projectReadme } from "@lim/core";
 import { createApp, validPath, type DriveLike } from "../src/app";
 import type { Google } from "../src/google";
-import { MemoryRepo } from "../src/repo";
+import { MemoryRepo, type Repo } from "../src/repo";
 
 const ORIGIN = "https://sabakan.example";
 const b64 = (o: unknown) => btoa(JSON.stringify(o)).replace(/=+$/, "");
 const idToken = (sub: string, email: string) => `x.${b64({ sub, email, name: sub, aud: "cid", email_verified: true })}.y`;
 
-function setup() {
-  const repo = new MemoryRepo();
+function setup<R extends Repo = MemoryRepo>(repo: R = new MemoryRepo() as unknown as R) {
   const drives = new Map<string, MemoryStore>(); // フォルダ ID → 中身
   const folders = new Map<string, string>(); // 名前 → ID（SABAKAN 直下）
   let seq = 0;

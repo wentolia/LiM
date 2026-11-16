@@ -1,6 +1,7 @@
 /* メンバー表の読み書き。D1 実装とテスト用のメモリ実装を同じ I/F で持つ。表の定義は migrations.ts */
 import { migrate, type D1Database, type D1Stmt } from "./migrations";
 export type { D1Database } from "./migrations";
+import type { TokenCipher } from "./tokenCipher";
 
 export interface User { id: string; email: string; name: string }
 export interface Project { id: string; name: string; owner_id: string; folder_id: string; created_at: string }
@@ -30,10 +31,14 @@ export interface Repo {
 }
 
 
+/** 暗号文の付加データ：別の行・列へ移した暗号文は読めない */
+const aad = (userId: string, column: string) => `drive_tokens:${userId}:${column}`;
+
 const ready = new WeakMap<D1Database, Promise<void>>();
 
 export class D1Repo implements Repo {
-  constructor(private db: D1Database) {}
+  /** cipher はドライブの鍵の暗号器（決定 0002） */
+  constructor(private db: D1Database, private cipher: TokenCipher) {}
 
   private q(sql: string, ...v: unknown[]): D1Stmt {
     return this.db.prepare(sql).bind(...v);
@@ -65,11 +70,24 @@ export class D1Repo implements Repo {
     return this.first<User>("SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.expires_at > ?", id, now);
   }
   deleteSession(id: string) { return this.run("DELETE FROM sessions WHERE id = ?", id); }
-  getDriveToken(userId: string) { return this.first<DriveToken>("SELECT * FROM drive_tokens WHERE user_id = ?", userId); }
-  putDriveToken(t: DriveToken) {
+  /** ドライブの鍵を読む。読めない行（鍵の取り違え・改ざん・平文）は未接続と同じ null にし、管理者が接続し直せるようにする */
+  async getDriveToken(userId: string): Promise<DriveToken | null> {
+    const row = await this.first<DriveToken>("SELECT * FROM drive_tokens WHERE user_id = ?", userId);
+    if (!row) return null;
+    const refresh = await this.cipher.decrypt(row.refresh_token, aad(userId, "refresh_token"));
+    if (refresh === null) {
+      console.error(`drive_tokens.refresh_token を今の DRIVE_TOKEN_KEY で読めません（user_id: ${userId}）。鍵を確かめるか、ドライブを接続し直してください`);
+      return null;
+    }
+    const access = row.access_token ? await this.cipher.decrypt(row.access_token, aad(userId, "access_token")) : null;
+    return { user_id: userId, refresh_token: refresh, access_token: access, expires_at: access ? row.expires_at : null };
+  }
+  async putDriveToken(t: DriveToken) {
+    const refresh = await this.cipher.encrypt(t.refresh_token, aad(t.user_id, "refresh_token"));
+    const access = t.access_token ? await this.cipher.encrypt(t.access_token, aad(t.user_id, "access_token")) : null;
     return this.run(
       "INSERT INTO drive_tokens (user_id, refresh_token, access_token, expires_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET refresh_token = excluded.refresh_token, access_token = excluded.access_token, expires_at = excluded.expires_at",
-      t.user_id, t.refresh_token, t.access_token, t.expires_at,
+      t.user_id, refresh, access, t.expires_at,
     );
   }
   projectsOf(email: string) {

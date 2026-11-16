@@ -1,16 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { getPlatformProxy } from "wrangler";
+import { describe, expect, it, vi } from "vitest";
 import { MIGRATIONS, migrate, type Migration } from "../src/migrations";
 import { D1Repo, type D1Database } from "../src/repo";
-
-// 本物の D1 のローカル実装（wrangler の getPlatformProxy）で、テストごとに空の DB を使う
-const proxies: { dispose(): Promise<void> }[] = [];
-async function freshD1(): Promise<D1Database> {
-  const p = await getPlatformProxy<{ DB: D1Database }>({ configPath: new URL("./d1.jsonc", import.meta.url).pathname, persist: false });
-  proxies.push(p);
-  return p.env.DB;
-}
-afterEach(async () => { await Promise.all(proxies.splice(0).map((p) => p.dispose())); });
+import { freshD1 } from "./d1";
 
 const tables = async (d: D1Database) =>
   (await d.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE '\\_cf%' ESCAPE '\\' ORDER BY name").all<{ name: string }>()).results.map((r) => r.name);
@@ -94,7 +85,7 @@ describe("migrate（ローカルの D1）", { timeout: 20_000 }, () => {
 
   it("D1Repo は DB ごとに、最初の読み書きの前に当てる", async () => {
     for (const d of [await freshD1(), await freshD1()]) {
-      const repo = new D1Repo(d);
+      const repo = new D1Repo(d, { encrypt: async (v) => v, decrypt: async (v) => v }); // 鍵の暗号化はここでは見ない
       await repo.upsertUser({ id: "u1", email: "a@example.com", name: "A" });
       expect(await repo.getUser("u1")).toEqual({ id: "u1", email: "a@example.com", name: "A" });
       expect(await versions(d)).toEqual(all);
