@@ -1,4 +1,4 @@
-import { ConflictError, LinkGraph, merge3, pathOf, sanitizeTitle, normalizeTitle, parsePage, renameLinks, renamePropLinks, serializePage, type Page, type Store, type StoreEntry } from "@lim/core";
+import { ConflictError, formatTime, LinkGraph, merge3, newId, pagesNeedingId, pathOf, sanitizeTitle, normalizeTitle, parsePage, renameLinks, renamePropLinks, serializePage, type Page, type Store, type StoreEntry } from "@lim/core";
 
 /** 一覧と本文をまとめて返せる保存先 */
 export interface BulkLoader {
@@ -99,7 +99,7 @@ export class Workspace {
    * 保存する。他の人が先に保存していたら（楽観ロック失敗）、最新を読み直して
    * 3-way マージした結果を保存し直す。どちらの変更も消さない。
    */
-  private async put(title: string, props: Record<string, unknown>, body: string, at?: string): Promise<Page> {
+  private async put(title: string, props: Record<string, unknown>, body: string, at?: string, fresh = false): Promise<Page> {
     // 既存ページは実際のパスに書く（題名の決まりより前に作られたファイル名でも二重にしない）
     const path = at ?? this.get(title)?.path ?? pathOf(title);
     let text = serializePage(props, body);
@@ -115,7 +115,8 @@ export class Workspace {
           this.updated.set(normalizeTitle(page.title), entry.updatedAt);
           return page;
         } catch (e) {
-          if (!(e instanceof ConflictError) || attempt >= 3) throw e;
+          // 新規作成（fresh）で他の人が先に同じ名前で作っていた：混ぜずに呼び出し元へ返す（両方の id と frontmatter が重なるのを防ぐ）
+          if (!(e instanceof ConflictError) || attempt >= 3 || (fresh && !this.revs.has(path))) throw e;
           const theirs = dec.decode(await this.store.read(path));
           text = merge3(this.bases.get(path) ?? "", text, theirs).text;
           this.bases.set(path, theirs);
@@ -179,13 +180,96 @@ export class Workspace {
     return changed;
   }
 
-  /** 新しいページを作る。名前が重複したら番号を付ける */
-  async create(base = "無題"): Promise<string> {
-    let title = sanitizeTitle(base) || "無題";
-    for (let n = 2; this.exists(title); n++) title = `${sanitizeTitle(base) || "無題"} ${n}`;
-    await this.put(title, {}, "");
-    this.emit();
-    return title;
+  /**
+   * 新しいページを作る。名前が重複したら番号を付ける。
+   * exact：その題名のページが欲しい（リンクから開くとき）。他の人が先に作っていたら、それを使う
+   */
+  async create(base = "無題", opts: { exact?: boolean } = {}): Promise<string> {
+    const stem = sanitizeTitle(base) || "無題";
+    for (let attempt = 0; ; attempt++) {
+      let title = stem;
+      if (opts.exact && this.exists(title)) return this.get(title)!.title;
+      for (let n = 2; this.exists(title); n++) title = `${stem} ${n}`;
+      try {
+        await this.put(title, { id: newId(), created_at: formatTime(new Date()) }, "", undefined, true);
+        this.emit();
+        return title;
+      } catch (e) {
+        if (!(e instanceof ConflictError) || attempt >= 3) throw e;
+        await this.refresh();
+      }
+    }
+  }
+
+  /** id を付けるべきページ（無い・形が違う・重複）と、frontmatter が読めず付けられないページ */
+  missingIds(): { paths: string[]; skipped: string[] } {
+    return pagesNeedingId(this.graph.all());
+  }
+
+  /**
+   * 移行：id の無いページ・重複したページに id を付ける。保存先と一致している内容（部屋の書き出し待ちの分は含めない）に
+   * 項目を 1 つ足して revision 条件付きで書く。開いている部屋は次の書き出しで 3-way マージして取り込む。
+   * 何度流しても同じ結果になる（他の人が先に付けていたら何もしない）。
+   * ドライブの条件付き書き込みは「確かめる → 書く」の 2 往復で原子的でないため、部屋が書き出した直後の内容を
+   * 古い内容で上書きしないよう、最近（recentMs 以内）更新されたページは飛ばす（あとで流し直せば付く）
+   */
+  async assignIds(
+    onProgress?: (done: number, total: number) => void,
+    opts: { now?: number; recentMs?: number } = {},
+  ): Promise<{ assigned: number; recent: number; failed: number; skipped: string[] }> {
+    // 他の人の変更を先に取り込み、最新の内容と更新日時で判断する
+    await this.refresh();
+    const { paths, skipped } = this.missingIds();
+    // 端末の時計が遅れていても、ドライブの最新の更新日時より前にはしない（全件が「編集中」のままになるのを防ぐ）
+    const newest = Math.max(0, ...[...this.updated.values()].map((v) => Date.parse(v) || 0));
+    const now = Math.max(opts.now ?? Date.now(), newest);
+    const recentMs = opts.recentMs ?? 120_000;
+    let assigned = 0;
+    let recent = 0;
+    let failed = 0;
+    for (let i = 0; i < paths.length; i++) {
+      const page = this.graph.all().find((p) => p.path === paths[i]);
+      const at = page ? Date.parse(this.updatedAt(page.title)) : NaN;
+      if (!(now - at >= recentMs)) recent++;
+      else {
+        try {
+          if (await this.addId(paths[i])) assigned++;
+          else recent++;
+        } catch (e) {
+          // 1 件の失敗（通信・ドライブの回数制限）で止めない。流し直せば続きから付く
+          console.warn("id", paths[i], e);
+          failed++;
+        }
+      }
+      onProgress?.(i + 1, paths.length);
+    }
+    if (assigned) this.emit();
+    return { assigned, recent, failed, skipped };
+  }
+
+  /** 1 件に id を付ける。保存先が手元の内容から変わっていたら（誰かが今書いた）付けずに false */
+  private async addId(path: string): Promise<boolean> {
+    const text = this.bases.get(path);
+    const rev = this.revs.get(path);
+    if (text === undefined || rev === undefined) return false;
+    const page = parsePage(path, text);
+    if (page.invalidFrontmatter) return false;
+    const next = serializePage({ ...page.props, id: newId() }, page.body);
+    this.saving.add(path);
+    try {
+      const entry = await this.store.write(path, enc.encode(next), "text/markdown", { ifRevision: rev });
+      this.revs.set(path, entry.revision);
+      this.bases.set(path, next);
+      const saved = parsePage(path, next);
+      this.graph.upsert(saved);
+      this.updated.set(normalizeTitle(saved.title), entry.updatedAt);
+      return true;
+    } catch (e) {
+      if (e instanceof ConflictError) return false;
+      throw e;
+    } finally {
+      this.saving.delete(path);
+    }
   }
 
   /** 改名。他ページの [[旧名]] も書き換える。成功したら新しい名前を返す */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MemoryStore } from "@lim/core";
+import { MemoryStore, projectReadme } from "@lim/core";
 import { createApp, validPath, type DriveLike } from "../src/app";
 import type { Google } from "../src/google";
 import { MemoryRepo, type Repo } from "../src/repo";
@@ -189,6 +189,24 @@ describe("API", () => {
     expect(after.lastAttempt.result).toMatch(/^403 forbidden origin/);
     await s.login("bob", "bob@example.com");
     expect((await s.call("bob", "GET", url)).status).toBe(404);
+  });
+
+  it("README.md：作るときに書き、管理者のそろえるで今の版に戻す（同じなら書かない）", async () => {
+    const s = setup();
+    await s.login("alice", "alice@example.com", true);
+    const p = await (await s.call("alice", "POST", "/api/projects", { name: "家計" })).json();
+    const drive = [...s.drives.values()].at(-1)!;
+    const text = new TextDecoder().decode(await drive.read("README.md"));
+    expect(text).toBe(projectReadme());
+    await drive.write("README.md", new TextEncoder().encode("手で直した"));
+    expect(await (await s.call("alice", "POST", `/api/projects/${p.id}/readme`)).json()).toEqual({ written: true });
+    expect(new TextDecoder().decode(await drive.read("README.md"))).toBe(projectReadme());
+    expect(await (await s.call("alice", "POST", `/api/projects/${p.id}/readme`)).json()).toEqual({ written: false });
+    // メンバーは書けない。README はファイル API の対象外
+    await s.call("alice", "POST", `/api/projects/${p.id}/members`, { email: "bob@example.com" });
+    await s.login("bob", "bob@example.com");
+    expect((await s.call("bob", "POST", `/api/projects/${p.id}/readme`)).status).toBe(403);
+    expect((await s.call("bob", "PUT", `/api/projects/${p.id}/file?path=README.md`, "x")).status).toBe(400);
   });
 
   it("ドライブ未接続の人はプロジェクトを作れない", async () => {

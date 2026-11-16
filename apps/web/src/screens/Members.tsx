@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
-import { api, type MemberInfo, type ProjectInfo } from "@lim/client";
+import { api, type ApiStore, type MemberInfo, type ProjectInfo, type Workspace } from "@lim/client";
+import { DataPanel } from "../features/data/DataPanel";
 
 interface Props {
   project: ProjectInfo;
+  /** 開いているプロジェクトのページ（読み込み中は null） */
+  data: { ws: Workspace; store: ApiStore } | null;
   onBack: () => void;
 }
 
 /** メンバー一覧と招待。招待はメールアドレスを登録するだけで、その人が Google でログインすると参加できる */
-export function Members({ project, onBack }: Props) {
+export function Members({ project, data, onBack }: Props) {
   const [list, setList] = useState<MemberInfo[]>([]);
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +87,11 @@ export function Members({ project, onBack }: Props) {
           <p className="note">
             招待した人には、このアプリのアドレス（{window.location.origin}）を伝えてください。そのメールアドレスの Google アカウントでログインすると、このプロジェクトが表示されます。ページは管理者のドライブに保存されます。
           </p>
+        )}
+        {data ? (
+          <DataPanel projectId={project.id} projectName={project.name} owner={owner} ws={data.ws} store={data.store} />
+        ) : (
+          <p className="note">ページを読み込むと、データの書き出しなどがここに出ます。</p>
         )}
       </main>
     </>

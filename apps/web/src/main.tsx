@@ -201,7 +201,7 @@ function Root() {
     return (
       <div className="app">
         {header()}
-        <Members project={project} onBack={() => go({ project: project.id })} />
+        <Members project={project} data={open?.id === project.id ? open : null} onBack={() => go({ project: project.id })} />
       </div>
     );
   }

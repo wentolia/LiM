@@ -5,3 +5,5 @@ export * from "./store.js";
 export * from "./driveStore.js";
 export * from "./merge.js";
 export * from "./ydoc.js";
+export * from "./id.js";
+export * from "./readme.js";

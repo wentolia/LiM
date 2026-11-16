@@ -38,6 +38,8 @@ export const api = {
   renameProject: (id: string, name: string) => call<{ ok: true }>("PATCH", `/api/projects/${id}`, { name }),
   members: (id: string) => call<MemberInfo[]>("GET", `/api/projects/${id}/members`),
   addMember: (id: string, email: string) => call<MemberInfo[]>("POST", `/api/projects/${id}/members`, { email }),
+  /** README.md を今の版にそろえる（サーバーが中身を作る） */
+  syncReadme: (id: string) => call<{ written: boolean }>("POST", `/api/projects/${id}/readme`),
   removeMember: (id: string, email: string) =>
     call<MemberInfo[]>("DELETE", `/api/projects/${id}/members?email=${encodeURIComponent(email)}`),
 };

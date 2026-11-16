@@ -38,6 +38,8 @@ export const pathOf = (title: string) => `pages/${sanitizeTitle(title)}.md`;
 
 /** 予約された項目名。書き出すときはこの順で先頭に並べ、残りは名前順にする */
 export const RESERVED_PROPS = ["id", "type", "tags", "created_at"] as const;
+/** 人が読むものではないので、一覧などの表示では出さない項目 */
+export const HIDDEN_PROPS: readonly string[] = ["id", "created_at"];
 /** 題名の長さの上限（ファイル名として PC に同期しても困らない長さ） */
 export const MAX_TITLE_LENGTH = 80;
 
