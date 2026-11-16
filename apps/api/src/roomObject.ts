@@ -33,6 +33,7 @@ export class PageRoom {
     let store: DriveStore | null = null;
     const drive = async () => {
       if (store) return store;
+      // 鍵は index.ts の入口で確かめ済み（無い・形が違えば部屋までは来ない）
       const repo = new D1Repo(this.env.DB, await tokenCipher(this.env.DRIVE_TOKEN_KEY));
       const project = await repo.getProject(projectId);
       if (!project) throw new Error("project not found");

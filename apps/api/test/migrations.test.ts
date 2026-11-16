@@ -85,7 +85,7 @@ describe("migrate（ローカルの D1）", { timeout: 20_000 }, () => {
 
   it("D1Repo は DB ごとに、最初の読み書きの前に当てる", async () => {
     for (const d of [await freshD1(), await freshD1()]) {
-      const repo = new D1Repo(d, null);
+      const repo = new D1Repo(d, { encrypt: async (v) => v, decrypt: async (v) => v }); // 鍵の暗号化はここでは見ない
       await repo.upsertUser({ id: "u1", email: "a@example.com", name: "A" });
       expect(await repo.getUser("u1")).toEqual({ id: "u1", email: "a@example.com", name: "A" });
       expect(await versions(d)).toEqual(all);

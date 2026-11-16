@@ -16,8 +16,8 @@ export interface Env {
   ROOMS: DONamespace;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
-  /** ドライブの鍵を暗号化する鍵（32 バイトの base64）。未登録の間は平文で動く（決定 0002） */
-  DRIVE_TOKEN_KEY?: string;
+  /** ドライブの鍵を暗号化する鍵（32 バイトの base64。決定 0002） */
+  DRIVE_TOKEN_KEY: string;
   ASSETS: { fetch(req: Request): Promise<Response> };
 }
 
@@ -28,7 +28,10 @@ export default {
     if (!env.GOOGLE_CLIENT_SECRET) {
       return Response.json({ error: "サーバーの設定（GOOGLE_CLIENT_SECRET）がまだです" }, { status: 503 });
     }
-    let cipher: TokenCipher | null;
+    if (!env.DRIVE_TOKEN_KEY) {
+      return Response.json({ error: "サーバーの設定（DRIVE_TOKEN_KEY）がまだです" }, { status: 503 });
+    }
+    let cipher: TokenCipher;
     try {
       cipher = await tokenCipher(env.DRIVE_TOKEN_KEY);
     } catch (e) {
